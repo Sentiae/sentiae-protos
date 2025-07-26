@@ -1,0 +1,390 @@
+syntax = "proto3";
+package auth.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/Sentiae/sentiae-protos/gen/go/auth/v1";
+
+// AuthInternalService provides secure, internal-only methods for other
+// microservices to interact with the authentication system.
+service AuthInternalService {
+  // Enhanced token validation with full organizational context
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+  // Enhanced user details with complete profile and organizational context
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+
+  // Batch user retrieval with enhanced profiles
+  rpc GetUsersBatch(GetUsersBatchRequest) returns (GetUsersBatchResponse);
+
+  // Permission checking methods
+  rpc CheckPermission(CheckPermissionRequest) returns (CheckPermissionResponse);
+  rpc CheckOrganizationPermission(CheckOrganizationPermissionRequest) returns (CheckOrganizationPermissionResponse);
+  rpc GetUserPermissions(GetUserPermissionsRequest) returns (GetUserPermissionsResponse);
+
+  // Organization management
+  rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+  rpc ListUserOrganizations(ListUserOrganizationsRequest) returns (ListUserOrganizationsResponse);
+  rpc GetOrganizationMembers(GetOrganizationMembersRequest) returns (GetOrganizationMembersResponse);
+
+  // Team management
+  rpc GetTeamMembers(GetTeamMembersRequest) returns (GetTeamMembersResponse);
+  rpc GetTeamHierarchy(GetTeamHierarchyRequest) returns (GetTeamHierarchyResponse);
+  rpc GetTeam(GetTeamRequest) returns (GetTeamResponse);
+  rpc ListOrganizationTeams(ListOrganizationTeamsRequest) returns (ListOrganizationTeamsResponse);
+
+  // Access validation methods
+  rpc ValidateOrganizationAccess(ValidateOrganizationAccessRequest) returns (ValidateOrganizationAccessResponse);
+  rpc ValidateTeamAccess(ValidateTeamAccessRequest) returns (ValidateTeamAccessResponse);
+  rpc GetUserAccessContext(GetUserAccessContextRequest) returns (GetUserAccessContextResponse);
+
+  // Cross-organization features
+  rpc ListConnectedOrganizations(ListConnectedOrganizationsRequest) returns (ListConnectedOrganizationsResponse);
+  rpc ListUserCrossOrganizationAccess(ListUserCrossOrganizationAccessRequest) returns (ListUserCrossOrganizationAccessResponse);
+
+  // User search and filtering
+  rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse);
+  rpc GetUsersByOrganization(GetUsersByOrganizationRequest) returns (GetUsersByOrganizationResponse);
+
+  // Session enrichment
+  rpc EnrichUserSession(EnrichUserSessionRequest) returns (EnrichUserSessionResponse);
+
+  // Utility methods
+  rpc GetOrganizationByTeam(GetOrganizationByTeamRequest) returns (GetOrganizationByTeamResponse);
+}
+
+// Enhanced ValidateToken with organizational context
+message ValidateTokenRequest {
+  string token = 1;
+  bool include_permissions = 2; // Include user permissions in response
+  bool include_organizations = 3; // Include user organizations in response
+}
+
+message ValidateTokenResponse {
+  bool is_valid = 1;
+  string user_id = 2;
+  string team_id = 3;
+  repeated string scopes = 4;
+  // Enhanced context
+  string primary_organization_id = 5;
+  repeated string organization_ids = 6;
+  repeated string team_permissions = 7;
+  repeated string organization_permissions = 8;
+  UserProfile user_profile = 9;
+}
+
+// Enhanced GetUser with complete profile
+message GetUserRequest {
+  string user_id = 1;
+  bool include_organizations = 2;
+  bool include_teams = 3;
+  bool include_permissions = 4;
+}
+
+message GetUserResponse {
+  string user_id = 1;
+  string team_id = 2;
+  string email = 3;
+  google.protobuf.Timestamp created_at = 4;
+  // Enhanced profile data
+  UserProfile profile = 5;
+  repeated Organization organizations = 6;
+  repeated Team teams = 7;
+  repeated UserPermission permissions = 8;
+}
+
+// Enhanced batch operations
+message GetUsersBatchRequest {
+  repeated string user_ids = 1;
+  bool include_profiles = 2;
+  bool include_organizations = 3;
+}
+
+message GetUsersBatchResponse {
+  repeated EnhancedUser users = 1;
+}
+
+// Permission checking
+message CheckPermissionRequest {
+  string user_id = 1;
+  string team_id = 2;
+  string permission = 3;
+}
+
+message CheckPermissionResponse {
+  bool has_permission = 1;
+  string role_name = 2;
+}
+
+message CheckOrganizationPermissionRequest {
+  string user_id = 1;
+  string organization_id = 2;
+  string permission = 3;
+}
+
+message CheckOrganizationPermissionResponse {
+  bool has_permission = 1;
+  string role_name = 2;
+}
+
+message GetUserPermissionsRequest {
+  string user_id = 1;
+  string organization_id = 2;
+  string team_id = 3;
+}
+
+message GetUserPermissionsResponse {
+  repeated string organization_permissions = 1;
+  repeated string team_permissions = 2;
+  repeated string effective_permissions = 3;
+}
+
+// Organization management
+message GetOrganizationRequest {
+  string organization_id = 1;
+}
+
+message GetOrganizationResponse {
+  Organization organization = 1;
+  int32 member_count = 2;
+  int32 team_count = 3;
+}
+
+message ListUserOrganizationsRequest {
+  string user_id = 1;
+}
+
+message ListUserOrganizationsResponse {
+  repeated Organization organizations = 1;
+  repeated Organization connected_organizations = 2;
+}
+
+message GetOrganizationMembersRequest {
+  string organization_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetOrganizationMembersResponse {
+  repeated OrganizationMember members = 1;
+  int32 total_count = 2;
+}
+
+// Team management
+message GetTeamMembersRequest {
+  string team_id = 1;
+}
+
+message GetTeamMembersResponse {
+  repeated TeamMember members = 1;
+}
+
+message GetTeamHierarchyRequest {
+  string organization_id = 1;
+}
+
+message GetTeamHierarchyResponse {
+  repeated Team root_teams = 1;
+}
+
+message GetTeamRequest {
+  string team_id = 1;
+}
+
+message GetTeamResponse {
+  Team team = 1;
+  Organization organization = 2;
+  Team parent_team = 3;
+  repeated Team child_teams = 4;
+}
+
+message ListOrganizationTeamsRequest {
+  string organization_id = 1;
+  string parent_team_id = 2;
+}
+
+message ListOrganizationTeamsResponse {
+  repeated Team teams = 1;
+}
+
+// Access validation
+message ValidateOrganizationAccessRequest {
+  string user_id = 1;
+  string organization_id = 2;
+}
+
+message ValidateOrganizationAccessResponse {
+  bool has_access = 1;
+  string access_type = 2; // "member", "cross_org_access", "connected"
+}
+
+message ValidateTeamAccessRequest {
+  string user_id = 1;
+  string team_id = 2;
+}
+
+message ValidateTeamAccessResponse {
+  bool has_access = 1;
+  string organization_id = 2;
+}
+
+message GetUserAccessContextRequest {
+  string user_id = 1;
+}
+
+message GetUserAccessContextResponse {
+  string user_id = 1;
+  string primary_organization_id = 2;
+  repeated string accessible_organization_ids = 3;
+  repeated string accessible_team_ids = 4;
+  bool is_enterprise_user = 5;
+}
+
+// Cross-organization features
+message ListConnectedOrganizationsRequest {
+  string organization_id = 1;
+}
+
+message ListConnectedOrganizationsResponse {
+  repeated ConnectedOrganization connected_organizations = 1;
+}
+
+message ListUserCrossOrganizationAccessRequest {
+  string user_id = 1;
+}
+
+message ListUserCrossOrganizationAccessResponse {
+  repeated CrossOrganizationAccess access_list = 1;
+}
+
+// User search and filtering
+message SearchUsersRequest {
+  string query = 1; // Search in name, email
+  string organization_id = 2; // Optional: filter by organization
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message SearchUsersResponse {
+  repeated EnhancedUser users = 1;
+  int32 total_count = 2;
+}
+
+message GetUsersByOrganizationRequest {
+  string organization_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetUsersByOrganizationResponse {
+  repeated EnhancedUser users = 1;
+  int32 total_count = 2;
+}
+
+// Session enrichment
+message EnrichUserSessionRequest {
+  string user_id = 1;
+  string current_team_id = 2;
+  string current_organization_id = 3;
+}
+
+message EnrichUserSessionResponse {
+  UserProfile profile = 1;
+  repeated Organization available_organizations = 2;
+  repeated Team available_teams = 3;
+  repeated string current_permissions = 4;
+  map<string, string> session_context = 5;
+}
+
+// Utility methods
+message GetOrganizationByTeamRequest {
+  string team_id = 1;
+}
+
+message GetOrganizationByTeamResponse {
+  Organization organization = 1;
+}
+
+// Data structures
+message UserProfile {
+  string user_id = 1;
+  string full_name = 2;
+  string avatar_url = 3;
+  string email = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message Organization {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  string logo_url = 5;
+  string website = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message Team {
+  string id = 1;
+  string organization_id = 2;
+  string parent_team_id = 3;
+  string name = 4;
+  int32 hierarchy_depth = 5;
+  string team_path = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  repeated Team child_teams = 9;
+}
+
+message TeamMember {
+  string user_id = 1;
+  string full_name = 2;
+  string role_name = 3;
+  string email = 4;
+  string avatar_url = 5;
+  google.protobuf.Timestamp joined_at = 6;
+}
+
+message OrganizationMember {
+  string user_id = 1;
+  string full_name = 2;
+  string email = 3;
+  string avatar_url = 4;
+  string organization_role_name = 5;
+  repeated string team_memberships = 6;
+  google.protobuf.Timestamp joined_at = 7;
+}
+
+message UserPermission {
+  string context_type = 1; // "organization" or "team"
+  string context_id = 2;   // organization_id or team_id
+  string role_name = 3;
+  repeated string permissions = 4;
+}
+
+message EnhancedUser {
+  string user_id = 1;
+  string email = 2;
+  UserProfile profile = 3;
+  repeated Organization organizations = 4;
+  repeated Team teams = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message ConnectedOrganization {
+  Organization organization = 1;
+  string connection_type = 2; // "partner", "subsidiary", "parent", etc.
+  string status = 3; // "active", "pending", "inactive"
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message CrossOrganizationAccess {
+  string id = 1;
+  string source_organization_id = 2;
+  Organization target_organization = 3;
+  string access_level = 4; // "guest", "member", "admin"
+  google.protobuf.Timestamp expires_at = 5;
+  google.protobuf.Timestamp created_at = 6;
+}

@@ -1,0 +1,767 @@
+syntax = "proto3";
+
+package identity.v1;
+
+option go_package = "github.com/Sentiae/sentiae-protos/gen/go/identity/v1";
+
+// IdentityService provides internal methods for managing users, teams,
+// organizations, and permissions.
+service IdentityService {
+  // === User Management ===
+  // Retrieves a user's profile, creates them if they don't exist.
+  // Called by auth-service during registration or JIT provisioning.
+  rpc GetOrCreateUser(GetOrCreateUserRequest) returns (GetOrCreateUserResponse);
+  
+  // Get user profile with organization context
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  
+  // Update user profile
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  
+  // === Permission Management ===
+  // Checks if a user has a specific permission within a team.
+  rpc CheckPermission(CheckPermissionRequest) returns (CheckPermissionResponse);
+  
+  // Checks if a user has a specific permission within an organization.
+  rpc CheckOrganizationPermission(CheckOrganizationPermissionRequest) returns (CheckOrganizationPermissionResponse);
+  
+  // Get user's effective permissions in context
+  rpc GetUserPermissions(GetUserPermissionsRequest) returns (GetUserPermissionsResponse);
+  
+  // === Organization Management ===
+  // Create a new organization
+  rpc CreateOrganization(CreateOrganizationRequest) returns (CreateOrganizationResponse);
+  
+  // Get organization details
+  rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+  
+  // Update organization
+  rpc UpdateOrganization(UpdateOrganizationRequest) returns (UpdateOrganizationResponse);
+  
+  // Delete organization
+  rpc DeleteOrganization(DeleteOrganizationRequest) returns (DeleteOrganizationResponse);
+  
+  // List organizations user has access to
+  rpc ListUserOrganizations(ListUserOrganizationsRequest) returns (ListUserOrganizationsResponse);
+  
+  // Get organization members
+  rpc GetOrganizationMembers(GetOrganizationMembersRequest) returns (GetOrganizationMembersResponse);
+  
+  // === Team Management ===
+  // Gets a list of team members and their roles from this service's database.
+  rpc GetTeamMembers(GetTeamMembersRequest) returns (GetTeamMembersResponse);
+  
+  // Create team within organization
+  rpc CreateTeam(CreateTeamRequest) returns (CreateTeamResponse);
+  
+  // Get team details with hierarchy
+  rpc GetTeam(GetTeamRequest) returns (GetTeamResponse);
+  
+  // Update team
+  rpc UpdateTeam(UpdateTeamRequest) returns (UpdateTeamResponse);
+  
+  // Delete team
+  rpc DeleteTeam(DeleteTeamRequest) returns (DeleteTeamResponse);
+  
+  // List teams in organization
+  rpc ListOrganizationTeams(ListOrganizationTeamsRequest) returns (ListOrganizationTeamsResponse);
+  
+  // Get team hierarchy
+  rpc GetTeamHierarchy(GetTeamHierarchyRequest) returns (GetTeamHierarchyResponse);
+  
+  // === Role Management ===
+  // Create organization role
+  rpc CreateOrganizationRole(CreateOrganizationRoleRequest) returns (CreateOrganizationRoleResponse);
+  
+  // Get organization roles
+  rpc ListOrganizationRoles(ListOrganizationRolesRequest) returns (ListOrganizationRolesResponse);
+  
+  // Update organization role
+  rpc UpdateOrganizationRole(UpdateOrganizationRoleRequest) returns (UpdateOrganizationRoleResponse);
+  
+  // Delete organization role
+  rpc DeleteOrganizationRole(DeleteOrganizationRoleRequest) returns (DeleteOrganizationRoleResponse);
+  
+  // === Membership Management ===
+  // Add user to organization
+  rpc AddOrganizationMember(AddOrganizationMemberRequest) returns (AddOrganizationMemberResponse);
+  
+  // Remove user from organization
+  rpc RemoveOrganizationMember(RemoveOrganizationMemberRequest) returns (RemoveOrganizationMemberResponse);
+  
+  // Update user's organization role
+  rpc UpdateOrganizationMemberRole(UpdateOrganizationMemberRoleRequest) returns (UpdateOrganizationMemberRoleResponse);
+  
+  // Add user to team
+  rpc AddTeamMember(AddTeamMemberRequest) returns (AddTeamMemberResponse);
+  
+  // Remove user from team
+  rpc RemoveTeamMember(RemoveTeamMemberRequest) returns (RemoveTeamMemberResponse);
+  
+  // Update user's team role
+  rpc UpdateTeamMemberRole(UpdateTeamMemberRoleRequest) returns (UpdateTeamMemberRoleResponse);
+  
+  // === Organization Connections ===
+  // Create connection between organizations
+  rpc CreateOrganizationConnection(CreateOrganizationConnectionRequest) returns (CreateOrganizationConnectionResponse);
+  
+  // List connected organizations
+  rpc ListConnectedOrganizations(ListConnectedOrganizationsRequest) returns (ListConnectedOrganizationsResponse);
+  
+  // Update organization connection
+  rpc UpdateOrganizationConnection(UpdateOrganizationConnectionRequest) returns (UpdateOrganizationConnectionResponse);
+  
+  // Delete organization connection
+  rpc DeleteOrganizationConnection(DeleteOrganizationConnectionRequest) returns (DeleteOrganizationConnectionResponse);
+  
+  // === Cross-Organization Access ===
+  // Grant cross-organization access
+  rpc GrantCrossOrganizationAccess(GrantCrossOrganizationAccessRequest) returns (GrantCrossOrganizationAccessResponse);
+  
+  // Revoke cross-organization access
+  rpc RevokeCrossOrganizationAccess(RevokeCrossOrganizationAccessRequest) returns (RevokeCrossOrganizationAccessResponse);
+  
+  // List user's cross-organization access
+  rpc ListUserCrossOrganizationAccess(ListUserCrossOrganizationAccessRequest) returns (ListUserCrossOrganizationAccessResponse);
+  
+  // === Invitation Management ===
+  // Create invitation (team, organization, or cross-organization)
+  rpc CreateInvitation(CreateInvitationRequest) returns (CreateInvitationResponse);
+  
+  // Accept invitation with optional account creation
+  rpc AcceptInvitation(AcceptInvitationRequest) returns (AcceptInvitationResponse);
+  
+  // List invitations
+  rpc ListInvitations(ListInvitationsRequest) returns (ListInvitationsResponse);
+  
+  // Cancel invitation
+  rpc CancelInvitation(CancelInvitationRequest) returns (CancelInvitationResponse);
+  
+  // === Enterprise User Management ===
+  // Bind user to organization (enterprise users)
+  rpc BindUserToOrganization(BindUserToOrganizationRequest) returns (BindUserToOrganizationResponse);
+  
+  // Get user's access context
+  rpc GetUserAccessContext(GetUserAccessContextRequest) returns (GetUserAccessContextResponse);
+  
+  // Check if user can join organization
+  rpc CanUserJoinOrganization(CanUserJoinOrganizationRequest) returns (CanUserJoinOrganizationResponse);
+  
+  // === Utility Methods ===
+  // Validate organization exists and user has access
+  rpc ValidateOrganizationAccess(ValidateOrganizationAccessRequest) returns (ValidateOrganizationAccessResponse);
+  
+  // Validate team exists and user has access
+  rpc ValidateTeamAccess(ValidateTeamAccessRequest) returns (ValidateTeamAccessResponse);
+  
+  // Get organization by team ID
+  rpc GetOrganizationByTeam(GetOrganizationByTeamRequest) returns (GetOrganizationByTeamResponse);
+  
+  // Cleanup expired invitations and access
+  rpc CleanupExpiredData(CleanupExpiredDataRequest) returns (CleanupExpiredDataResponse);
+}
+
+message GetOrCreateUserRequest {
+  string email = 1;
+  string full_name = 2;
+}
+
+message GetOrCreateUserResponse {
+  string user_id = 1;
+  string organization_id = 2; // The user's organization.
+  string default_team_id = 3; // The user's initial team.
+}
+
+message CheckPermissionRequest {
+  string user_id = 1;
+  string team_id = 2;
+  string permission = 3; // e.g., "team:members:invite"
+}
+
+message CheckPermissionResponse {
+  bool has_permission = 1;
+}
+
+message GetTeamMembersRequest {
+  string team_id = 1;
+}
+
+message TeamMember {
+  string user_id = 1;
+  string full_name = 2;
+  string role_name = 3;
+}
+
+message GetTeamMembersResponse {
+  repeated TeamMember members = 1;
+}
+
+// === Common Types ===
+
+message User {
+  string id = 1;
+  string full_name = 2;
+  string avatar_url = 3;
+  string email = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message Organization {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  string logo_url = 5;
+  string website = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message Team {
+  string id = 1;
+  string organization_id = 2;
+  string parent_team_id = 3;
+  string name = 4;
+  int32 hierarchy_depth = 5;
+  string team_path = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message OrganizationRole {
+  string id = 1;
+  string organization_id = 2;
+  string name = 3;
+  repeated string permissions = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message TeamRole {
+  string id = 1;
+  string team_id = 2;
+  string name = 3;
+  repeated string permissions = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message OrganizationMember {
+  string user_id = 1;
+  string full_name = 2;
+  string email = 3;
+  string role_id = 4;
+  string role_name = 5;
+  string joined_at = 6;
+}
+
+message OrganizationConnection {
+  string id = 1;
+  string source_organization_id = 2;
+  string target_organization_id = 3;
+  string connection_type = 4;
+  string status = 5;
+  string created_at = 6;
+}
+
+message ConnectedOrganization {
+  Organization organization = 1;
+  string connection_type = 2;
+  string status = 3;
+  bool is_source = 4;
+}
+
+message CrossOrganizationAccess {
+  string id = 1;
+  string user_id = 2;
+  string source_organization_id = 3;
+  string target_organization_id = 4;
+  string access_level = 5;
+  string granted_by_user_id = 6;
+  string expires_at = 7;
+  string created_at = 8;
+}
+
+message Invitation {
+  string id = 1;
+  string team_id = 2;
+  string organization_id = 3;
+  string source_organization_id = 4;
+  string email = 5;
+  string role_id = 6;
+  string invited_by_user_id = 7;
+  string invitation_type = 8;
+  string status = 9;
+  bool create_account = 10;
+  string expires_at = 11;
+  string created_at = 12;
+}
+
+// === User Management Messages ===
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+  repeated Organization organizations = 2;
+  repeated Team teams = 3;
+}
+
+message UpdateUserRequest {
+  string user_id = 1;
+  string full_name = 2;
+  string avatar_url = 3;
+}
+
+message UpdateUserResponse {
+  User user = 1;
+}
+
+// === Permission Management Messages ===
+
+message CheckOrganizationPermissionRequest {
+  string user_id = 1;
+  string organization_id = 2;
+  string permission = 3;
+}
+
+message CheckOrganizationPermissionResponse {
+  bool has_permission = 1;
+}
+
+message GetUserPermissionsRequest {
+  string user_id = 1;
+  string organization_id = 2;
+  string team_id = 3;
+}
+
+message GetUserPermissionsResponse {
+  repeated string organization_permissions = 1;
+  repeated string team_permissions = 2;
+  repeated string effective_permissions = 3;
+}
+
+// === Organization Management Messages ===
+
+message CreateOrganizationRequest {
+  string name = 1;
+  string slug = 2;
+  string description = 3;
+  string created_by_user_id = 4;
+}
+
+message CreateOrganizationResponse {
+  Organization organization = 1;
+  string default_team_id = 2;
+}
+
+message GetOrganizationRequest {
+  string organization_id = 1;
+}
+
+message GetOrganizationResponse {
+  Organization organization = 1;
+  int32 member_count = 2;
+  int32 team_count = 3;
+}
+
+message UpdateOrganizationRequest {
+  string organization_id = 1;
+  string name = 2;
+  string description = 3;
+  string logo_url = 4;
+  string website = 5;
+}
+
+message UpdateOrganizationResponse {
+  Organization organization = 1;
+}
+
+message DeleteOrganizationRequest {
+  string organization_id = 1;
+}
+
+message DeleteOrganizationResponse {
+  bool success = 1;
+}
+
+message ListUserOrganizationsRequest {
+  string user_id = 1;
+}
+
+message ListUserOrganizationsResponse {
+  repeated Organization organizations = 1;
+  repeated ConnectedOrganization connected_organizations = 2;
+}
+
+message GetOrganizationMembersRequest {
+  string organization_id = 1;
+}
+
+message GetOrganizationMembersResponse {
+  repeated OrganizationMember members = 1;
+}
+
+// === Team Management Messages ===
+
+message CreateTeamRequest {
+  string organization_id = 1;
+  string parent_team_id = 2;
+  string name = 3;
+  string created_by_user_id = 4;
+}
+
+message CreateTeamResponse {
+  Team team = 1;
+}
+
+message GetTeamRequest {
+  string team_id = 1;
+}
+
+message GetTeamResponse {
+  Team team = 1;
+  Organization organization = 2;
+  Team parent_team = 3;
+  repeated Team child_teams = 4;
+}
+
+message UpdateTeamRequest {
+  string team_id = 1;
+  string name = 2;
+  string parent_team_id = 3;
+}
+
+message UpdateTeamResponse {
+  Team team = 1;
+}
+
+message DeleteTeamRequest {
+  string team_id = 1;
+}
+
+message DeleteTeamResponse {
+  bool success = 1;
+}
+
+message ListOrganizationTeamsRequest {
+  string organization_id = 1;
+  string parent_team_id = 2;
+}
+
+message ListOrganizationTeamsResponse {
+  repeated Team teams = 1;
+}
+
+message GetTeamHierarchyRequest {
+  string organization_id = 1;
+}
+
+message TeamHierarchyNode {
+  Team team = 1;
+  repeated TeamHierarchyNode children = 2;
+}
+
+message GetTeamHierarchyResponse {
+  repeated TeamHierarchyNode root_teams = 1;
+}
+
+// === Role Management Messages ===
+
+message CreateOrganizationRoleRequest {
+  string organization_id = 1;
+  string name = 2;
+  repeated string permissions = 3;
+}
+
+message CreateOrganizationRoleResponse {
+  OrganizationRole role = 1;
+}
+
+message ListOrganizationRolesRequest {
+  string organization_id = 1;
+}
+
+message ListOrganizationRolesResponse {
+  repeated OrganizationRole roles = 1;
+}
+
+message UpdateOrganizationRoleRequest {
+  string role_id = 1;
+  string name = 2;
+  repeated string permissions = 3;
+}
+
+message UpdateOrganizationRoleResponse {
+  OrganizationRole role = 1;
+}
+
+message DeleteOrganizationRoleRequest {
+  string role_id = 1;
+}
+
+message DeleteOrganizationRoleResponse {
+  bool success = 1;
+}
+
+// === Membership Management Messages ===
+
+message AddOrganizationMemberRequest {
+  string organization_id = 1;
+  string user_id = 2;
+  string role_id = 3;
+  string added_by_user_id = 4;
+}
+
+message AddOrganizationMemberResponse {
+  bool success = 1;
+}
+
+message RemoveOrganizationMemberRequest {
+  string organization_id = 1;
+  string user_id = 2;
+}
+
+message RemoveOrganizationMemberResponse {
+  bool success = 1;
+}
+
+message UpdateOrganizationMemberRoleRequest {
+  string organization_id = 1;
+  string user_id = 2;
+  string role_id = 3;
+}
+
+message UpdateOrganizationMemberRoleResponse {
+  bool success = 1;
+}
+
+message AddTeamMemberRequest {
+  string team_id = 1;
+  string user_id = 2;
+  string role_id = 3;
+  string added_by_user_id = 4;
+}
+
+message AddTeamMemberResponse {
+  bool success = 1;
+}
+
+message RemoveTeamMemberRequest {
+  string team_id = 1;
+  string user_id = 2;
+}
+
+message RemoveTeamMemberResponse {
+  bool success = 1;
+}
+
+message UpdateTeamMemberRoleRequest {
+  string team_id = 1;
+  string user_id = 2;
+  string role_id = 3;
+}
+
+message UpdateTeamMemberRoleResponse {
+  bool success = 1;
+}
+
+// === Organization Connection Messages ===
+
+message CreateOrganizationConnectionRequest {
+  string source_organization_id = 1;
+  string target_organization_id = 2;
+  string connection_type = 3;
+  string created_by_user_id = 4;
+}
+
+message CreateOrganizationConnectionResponse {
+  OrganizationConnection connection = 1;
+}
+
+message ListConnectedOrganizationsRequest {
+  string organization_id = 1;
+}
+
+message ListConnectedOrganizationsResponse {
+  repeated ConnectedOrganization connected_organizations = 1;
+}
+
+message UpdateOrganizationConnectionRequest {
+  string connection_id = 1;
+  string connection_type = 2;
+  string status = 3;
+}
+
+message UpdateOrganizationConnectionResponse {
+  OrganizationConnection connection = 1;
+}
+
+message DeleteOrganizationConnectionRequest {
+  string connection_id = 1;
+}
+
+message DeleteOrganizationConnectionResponse {
+  bool success = 1;
+}
+
+// === Cross-Organization Access Messages ===
+
+message GrantCrossOrganizationAccessRequest {
+  string user_id = 1;
+  string source_organization_id = 2;
+  string target_organization_id = 3;
+  string access_level = 4;
+  string granted_by_user_id = 5;
+  string expires_at = 6;
+}
+
+message GrantCrossOrganizationAccessResponse {
+  CrossOrganizationAccess access = 1;
+}
+
+message RevokeCrossOrganizationAccessRequest {
+  string user_id = 1;
+  string target_organization_id = 2;
+}
+
+message RevokeCrossOrganizationAccessResponse {
+  bool success = 1;
+}
+
+message ListUserCrossOrganizationAccessRequest {
+  string user_id = 1;
+}
+
+message ListUserCrossOrganizationAccessResponse {
+  repeated CrossOrganizationAccess access_list = 1;
+}
+
+// === Invitation Management Messages ===
+
+message CreateInvitationRequest {
+  string team_id = 1;
+  string organization_id = 2;
+  string source_organization_id = 3;
+  string email = 4;
+  string role_id = 5;
+  string invited_by_user_id = 6;
+  string invitation_type = 7;
+  bool create_account = 8;
+  string account_full_name = 9;
+}
+
+message CreateInvitationResponse {
+  Invitation invitation = 1;
+}
+
+message AcceptInvitationRequest {
+  string invitation_id = 1;
+  string user_id = 2;
+  string password = 3; // For account creation
+}
+
+message AcceptInvitationResponse {
+  bool success = 1;
+  string user_id = 2; // If account was created
+  string organization_id = 3;
+  string team_id = 4;
+}
+
+message ListInvitationsRequest {
+  string organization_id = 1;
+  string team_id = 2;
+  string email = 3;
+  string status = 4;
+}
+
+message ListInvitationsResponse {
+  repeated Invitation invitations = 1;
+}
+
+message CancelInvitationRequest {
+  string invitation_id = 1;
+}
+
+message CancelInvitationResponse {
+  bool success = 1;
+}
+
+// === Enterprise User Management Messages ===
+
+message BindUserToOrganizationRequest {
+  string user_id = 1;
+  string organization_id = 2;
+  string binding_type = 3;
+  bool can_join_connected_orgs = 4;
+  string created_by_user_id = 5;
+}
+
+message BindUserToOrganizationResponse {
+  bool success = 1;
+}
+
+message GetUserAccessContextRequest {
+  string user_id = 1;
+}
+
+message GetUserAccessContextResponse {
+  string user_id = 1;
+  string primary_organization_id = 2;
+  repeated string accessible_organization_ids = 3;
+  repeated string accessible_team_ids = 4;
+  bool is_enterprise_user = 5;
+}
+
+message CanUserJoinOrganizationRequest {
+  string user_id = 1;
+  string organization_id = 2;
+}
+
+message CanUserJoinOrganizationResponse {
+  bool can_join = 1;
+  string reason = 2;
+}
+
+// === Utility Messages ===
+
+message ValidateOrganizationAccessRequest {
+  string user_id = 1;
+  string organization_id = 2;
+}
+
+message ValidateOrganizationAccessResponse {
+  bool has_access = 1;
+  string access_type = 2;
+}
+
+message ValidateTeamAccessRequest {
+  string user_id = 1;
+  string team_id = 2;
+}
+
+message ValidateTeamAccessResponse {
+  bool has_access = 1;
+  string organization_id = 2;
+}
+
+message GetOrganizationByTeamRequest {
+  string team_id = 1;
+}
+
+message GetOrganizationByTeamResponse {
+  Organization organization = 1;
+}
+
+message CleanupExpiredDataRequest {
+  bool cleanup_invitations = 1;
+  bool cleanup_cross_org_access = 2;
+}
+
+message CleanupExpiredDataResponse {
+  int32 invitations_cleaned = 1;
+  int32 access_cleaned = 2;
+}
