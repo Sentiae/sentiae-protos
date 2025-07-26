@@ -2,34 +2,34 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
-package auth.v1;
+package identity.v1;
 
-option go_package = "github.com/Sentiae/sentiae-protos/gen/go/identity/v1/auth";
+option go_package = "github.com/Sentiae/sentiae-protos/gen/go/identity/v1";
 
-// AuthInternalService - Expected interface from auth-service
-service AuthInternalService {
+// AuthServiceInterface - Expected interface from auth-service
+service AuthServiceInterface {
   // Validates a JWT and returns its claims.
-  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+  rpc ValidateToken(AuthValidateTokenRequest) returns (AuthValidateTokenResponse);
 
   // Retrieves user details for a batch of user IDs.
-  rpc GetUsersBatch(GetUsersBatchRequest) returns (GetUsersBatchResponse);
+  rpc GetUsersBatch(AuthGetUsersBatchRequest) returns (AuthGetUsersBatchResponse);
 
   // Registers a new user account (for invitation-based account creation).
-  rpc RegisterUser(RegisterUserRequest) returns (RegisterUserResponse);
+  rpc RegisterUser(AuthRegisterUserRequest) returns (AuthRegisterUserResponse);
 }
 
-message ValidateTokenRequest {
+message AuthValidateTokenRequest {
   string token = 1;
 }
 
-message ValidateTokenResponse {
+message AuthValidateTokenResponse {
   bool valid = 1;
   string user_id = 2;
   string team_id = 3;
   string email = 4;
 }
 
-message GetUsersBatchRequest {
+message AuthGetUsersBatchRequest {
   repeated string user_ids = 1;
 }
 
@@ -38,17 +38,17 @@ message UserDetails {
   string email = 2;
 }
 
-message GetUsersBatchResponse {
+message AuthGetUsersBatchResponse {
   repeated UserDetails users = 1;
 }
 
-message RegisterUserRequest {
+message AuthRegisterUserRequest {
   string email = 1;
   string password = 2;
   string team_id = 3;
 }
 
-message RegisterUserResponse {
+message AuthRegisterUserResponse {
   string user_id = 1;
   string team_id = 2;
   string email = 3;

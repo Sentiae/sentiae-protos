@@ -49,11 +49,11 @@ jobs:
           rm -rf gen/go
           mkdir -p gen/go
           
-          # Generate Go code using buf
-          buf generate
+          # Generate Go code using buf (buf files are in api directory)
+          cd api && buf generate
           
           # Verify generation was successful
-          if [ ! -d "gen/go" ] || [ -z "$(find gen/go -name '*.go' 2>/dev/null)" ]; then
+          if [ ! -d "../gen/go" ] || [ -z "$(find ../gen/go -name '*.go' 2>/dev/null)" ]; then
             echo "Warning: No Go files were generated. This might be expected if no proto files exist yet."
           fi
 

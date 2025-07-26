@@ -1,4 +1,7 @@
 version: v1
+build:
+  excludes:
+    - .git
 breaking:
   use:
     - FILE
@@ -8,6 +11,6 @@ lint:
   except:
     - PACKAGE_ENUM_NO_ALLOW_ALIAS
     - PACKAGE_DIRECTORY_MATCH
-build:
-  roots:
-    - api
+    - SERVICE_SUFFIX
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
