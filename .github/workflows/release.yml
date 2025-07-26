@@ -1,0 +1,164 @@
+name: Release Proto Module
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+
+jobs:
+  generate-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Install buf
+        run: |
+          BUF_VERSION=1.28.1
+          curl -sSL "https://github.com/bufbuild/buf/releases/download/v${BUF_VERSION}/buf-$(uname -s)-$(uname -m)" -o "/usr/local/bin/buf"
+          chmod +x "/usr/local/bin/buf"
+
+      - name: Install protoc-gen-go and protoc-gen-go-grpc
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Generate Go code from protos
+        run: |
+          # Clean generated directory
+          rm -rf gen/go
+          mkdir -p gen/go
+          
+          # Generate Go code using buf
+          buf generate
+          
+          # Verify generation was successful
+          if [ ! -d "gen/go" ] || [ -z "$(find gen/go -name '*.go' 2>/dev/null)" ]; then
+            echo "Warning: No Go files were generated. This might be expected if no proto files exist yet."
+          fi
+
+      - name: Run tests
+        run: |
+          go mod tidy
+          go test ./...
+
+      - name: Get current version
+        id: get_version
+        run: |
+          # Get the latest tag, default to 0.0.0 if no tags exist
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          
+          # Remove 'v' prefix for version calculation
+          CURRENT_VERSION=${LATEST_TAG#v}
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Calculate new version
+        id: calc_version
+        run: |
+          CURRENT_VERSION="${{ steps.get_version.outputs.current_version }}"
+          
+          # Parse current version
+          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+          MAJOR=${VERSION_PARTS[0]:-0}
+          MINOR=${VERSION_PARTS[1]:-0}
+          PATCH=${VERSION_PARTS[2]:-0}
+          
+          # Determine version type
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+          else
+            # Auto-deployment on main branch uses patch
+            VERSION_TYPE="patch"
+          fi
+          
+          # Calculate new version based on type
+          case $VERSION_TYPE in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Commit generated files
+        run: |
+          git add .
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Generate proto files for v${{ steps.calc_version.outputs.new_version }}"
+            git push origin main
+          fi
+
+      - name: Create and push tag
+        run: |
+          NEW_TAG="v${{ steps.calc_version.outputs.new_version }}"
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
+          git push origin "$NEW_TAG"
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.calc_version.outputs.new_version }}
+          release_name: Release v${{ steps.calc_version.outputs.new_version }}
+          body: |
+            ## Changes
+            
+            This release includes generated Go code from protocol buffer definitions.
+            
+            **Version Type:** ${{ steps.calc_version.outputs.version_type }}
+            **Previous Version:** ${{ steps.get_version.outputs.latest_tag }}
+            **New Version:** v${{ steps.calc_version.outputs.new_version }}
+            
+            ### Usage
+            
+            To use this version in your Go project:
+            
+            ```bash
+            go get github.com/Sentiae/sentiae-protos@v${{ steps.calc_version.outputs.new_version }}
+            ```
+            
+            ### Generated Files
+            
+            This release contains generated Go files from the protocol buffer definitions in the `api/proto/` directory.
+          draft: false
+          prerelease: false

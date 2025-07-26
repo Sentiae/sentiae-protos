@@ -1,0 +1,13 @@
+version: v1
+breaking:
+  use:
+    - FILE
+lint:
+  use:
+    - DEFAULT
+  except:
+    - PACKAGE_ENUM_NO_ALLOW_ALIAS
+    - PACKAGE_DIRECTORY_MATCH
+build:
+  roots:
+    - api
