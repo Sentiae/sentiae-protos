@@ -6,52 +6,137 @@ package identity.v1;
 
 option go_package = "github.com/Sentiae/sentiae-protos/gen/go/identity/v1";
 
-// AuthServiceInterface - Expected interface from auth-service
+// AuthServiceInterface defines the expected interface for auth-service.
+//
+// This service interface is used by the identity-service to communicate
+// with the auth-service for authentication and user management operations.
+//
+// Key responsibilities:
+// - Token validation for authenticated requests
+// - User account creation during invitation flows
+// - Batch user information retrieval
+//
+// Security:
+// All calls to this service should include proper service-to-service
+// authentication headers to ensure secure inter-service communication.
+//
+// Example usage:
+//   client := identity.NewAuthServiceInterfaceClient(conn)
+//   resp, err := client.ValidateToken(ctx, &AuthValidateTokenRequest{
+//     Token: bearerToken,
+//   })
 service AuthServiceInterface {
-  // Validates a JWT and returns its claims.
+  // ValidateToken validates a JWT token and returns user information.
+  //
+  // This method is called by identity-service to:
+  // - Verify incoming authentication tokens
+  // - Extract user identity from valid tokens
+  // - Ensure users have valid authentication state
+  //
+  // Returns user_id, team_id, and email for valid tokens.
+  // For invalid tokens, valid=false and other fields are empty.
   rpc ValidateToken(AuthValidateTokenRequest) returns (AuthValidateTokenResponse);
 
-  // Retrieves user details for a batch of user IDs.
+  // GetUsersBatch retrieves basic user information for multiple users.
+  //
+  // This method is used for:
+  // - Populating user details in organization/team member lists
+  // - Resolving user IDs to email addresses for notifications
+  // - Batch operations that need user context
+  //
+  // Non-existent user IDs are omitted from the response.
   rpc GetUsersBatch(AuthGetUsersBatchRequest) returns (AuthGetUsersBatchResponse);
 
-  // Registers a new user account (for invitation-based account creation).
+  // RegisterUser creates a new user account during invitation acceptance.
+  //
+  // This method is called when:
+  // - A user accepts an invitation but doesn't have an account
+  // - The invitation included the create_account flag
+  // - The email from the invitation matches the registration request
+  //
+  // The new user is created with the provided credentials and
+  // automatically assigned to the specified team context.
+  //
+  // Returns the new user's ID and profile information.
   rpc RegisterUser(AuthRegisterUserRequest) returns (AuthRegisterUserResponse);
 }
 
+// AuthValidateTokenRequest is the request for ValidateToken RPC.
 message AuthValidateTokenRequest {
+  // JWT token to validate (required).
+  // Expected format: "Bearer <token>" or just "<token>".
   string token = 1;
 }
 
+// AuthValidateTokenResponse is the response for ValidateToken RPC.
 message AuthValidateTokenResponse {
+  // Whether the token is valid and not expired.
   bool valid = 1;
+
+  // User ID extracted from valid token (empty if invalid).
   string user_id = 2;
+
+  // Team ID associated with the user (empty if invalid).
+  // @deprecated: Use organization context from identity service instead.
   string team_id = 3;
+
+  // Email address of the authenticated user (empty if invalid).
   string email = 4;
 }
 
+// AuthGetUsersBatchRequest is the request for GetUsersBatch RPC.
 message AuthGetUsersBatchRequest {
+  // List of user IDs to retrieve (required).
+  // Maximum: 100 user IDs per request.
   repeated string user_ids = 1;
 }
 
+// UserDetails provides basic user information.
 message UserDetails {
+  // User's unique identifier.
   string user_id = 1;
+
+  // User's email address.
   string email = 2;
 }
 
+// AuthGetUsersBatchResponse is the response for GetUsersBatch RPC.
 message AuthGetUsersBatchResponse {
+  // List of users found.
+  // Users not found are omitted from results.
   repeated UserDetails users = 1;
 }
 
+// AuthRegisterUserRequest is the request for RegisterUser RPC.
 message AuthRegisterUserRequest {
+  // Email address for the new user account (required).
+  // Must match the email from the invitation being accepted.
   string email = 1;
+
+  // Password for the new user account (required).
+  // Must meet the organization's password policy requirements.
   string password = 2;
+
+  // Team ID to associate with the new user (required).
+  // The user will be added to this team upon account creation.
   string team_id = 3;
 }
 
+// AuthRegisterUserResponse is the response for RegisterUser RPC.
 message AuthRegisterUserResponse {
+  // Unique identifier for the newly created user.
   string user_id = 1;
+
+  // Team ID the user was assigned to.
   string team_id = 2;
+
+  // Email address of the new user account.
   string email = 3;
+
+  // Whether MFA is enabled for this user.
+  // May be enforced by organization policy.
   bool mfa_enabled = 4;
+
+  // Timestamp when the account was created.
   google.protobuf.Timestamp created_at = 5;
 }

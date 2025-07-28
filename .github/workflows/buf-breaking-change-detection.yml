@@ -1,0 +1,191 @@
+name: "Buf Breaking Change Detection"
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'api/proto/**/*.proto'
+      - 'api/buf.yaml'
+      - '.github/workflows/buf-breaking-change-detection.yml'
+  
+  push:
+    branches: [main, develop]
+    paths:
+      - 'api/proto/**/*.proto'
+      - 'api/buf.yaml'
+
+jobs:
+  breaking-change-detection:
+    runs-on: ubuntu-latest
+    name: "Check for Proto Breaking Changes"
+    
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history for comparison
+          fetch-depth: 0
+      
+      - name: Setup Buf CLI
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 'latest'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Run Buf Lint
+        run: |
+          cd api
+          buf lint
+      
+      - name: Determine comparison target
+        id: comparison-target
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For PRs, compare against the target branch
+            echo "target=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
+            echo "ref=origin/${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
+          else
+            # For pushes to main/develop, compare against the previous commit
+            echo "target=HEAD~1" >> $GITHUB_OUTPUT
+            echo "ref=HEAD~1" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Check for breaking changes against target
+        id: breaking-check
+        run: |
+          cd api
+          
+          # Create a temporary directory for the comparison
+          mkdir -p /tmp/buf-comparison
+          
+          # Check if comparison target exists
+          if git rev-parse --verify ${{ steps.comparison-target.outputs.ref }} >/dev/null 2>&1; then
+            echo "Comparing against ${{ steps.comparison-target.outputs.target }}"
+            
+            # Export the target version
+            git archive ${{ steps.comparison-target.outputs.ref }} -- api/ | tar -x -C /tmp/buf-comparison/
+            
+            # Run breaking change detection
+            set +e
+            buf breaking --against /tmp/buf-comparison/api
+            BREAKING_EXIT_CODE=$?
+            set -e
+            
+            if [ $BREAKING_EXIT_CODE -eq 0 ]; then
+              echo "result=no-breaking-changes" >> $GITHUB_OUTPUT
+              echo "No breaking changes detected! ✅" >> breaking_changes_summary.md
+            else
+              echo "result=breaking-changes-detected" >> $GITHUB_OUTPUT
+              echo "Breaking changes detected! ❌" >> breaking_changes_summary.md
+              echo "" >> breaking_changes_summary.md
+              echo "Please review the breaking changes above and consider:" >> breaking_changes_summary.md
+              echo "- Incrementing the major version if this is intentional" >> breaking_changes_summary.md
+              echo "- Modifying the changes to maintain backwards compatibility" >> breaking_changes_summary.md
+              echo "- Adding proper deprecation warnings before removing fields" >> breaking_changes_summary.md
+            fi
+          else
+            echo "No comparison target found, skipping breaking change detection"
+            echo "result=no-comparison-target" >> $GITHUB_OUTPUT
+            echo "No comparison target available - this might be the first commit" >> breaking_changes_summary.md
+          fi
+      
+      - name: Check for version bump requirement
+        if: steps.breaking-check.outputs.result == 'breaking-changes-detected'
+        run: |
+          # Check if this is a version bump commit by looking for version changes
+          if git diff --name-only ${{ steps.comparison-target.outputs.ref }}..HEAD | grep -E "(version|CHANGELOG|release)" || \
+             git log --oneline ${{ steps.comparison-target.outputs.ref }}..HEAD | grep -iE "(bump|version|release|breaking)"; then
+            echo "Version bump detected in commit history or file changes"
+            echo "✅ Breaking changes appear to be accompanied by proper versioning" >> breaking_changes_summary.md
+          else
+            echo "❌ Breaking changes detected without apparent version bump!" >> breaking_changes_summary.md
+            echo "Please ensure you:" >> breaking_changes_summary.md
+            echo "1. Increment the major version in relevant package files" >> breaking_changes_summary.md
+            echo "2. Update CHANGELOG.md with breaking change documentation" >> breaking_changes_summary.md
+            echo "3. Add migration guide for API consumers" >> breaking_changes_summary.md
+            exit 1
+          fi
+      
+      - name: Generate API compatibility report
+        if: always()
+        run: |
+          cd api
+          echo "# Proto API Compatibility Report" > ../api_compatibility_report.md
+          echo "" >> ../api_compatibility_report.md
+          echo "**Generated:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> ../api_compatibility_report.md
+          echo "**Commit:** ${{ github.sha }}" >> ../api_compatibility_report.md
+          echo "**Comparison Target:** ${{ steps.comparison-target.outputs.target }}" >> ../api_compatibility_report.md
+          echo "" >> ../api_compatibility_report.md
+          
+          if [ -f ../breaking_changes_summary.md ]; then
+            cat ../breaking_changes_summary.md >> ../api_compatibility_report.md
+          fi
+          
+          echo "" >> ../api_compatibility_report.md
+          echo "## Lint Results" >> ../api_compatibility_report.md
+          echo "\`\`\`" >> ../api_compatibility_report.md
+          buf lint 2>&1 || echo "Lint completed with warnings/errors" >> ../api_compatibility_report.md
+          echo "\`\`\`" >> ../api_compatibility_report.md
+      
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let report = '';
+            try {
+              report = fs.readFileSync('api_compatibility_report.md', 'utf8');
+            } catch (error) {
+              report = '# Proto API Compatibility Report\n\nError generating report: ' + error.message;
+            }
+            
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const existingComment = comments.data.find(comment => 
+              comment.user.login === 'github-actions[bot]' && 
+              comment.body.includes('Proto API Compatibility Report')
+            );
+            
+            const commentBody = report;
+            
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+      
+      - name: Upload compatibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-compatibility-report
+          path: api_compatibility_report.md
+          retention-days: 30
+      
+      - name: Fail on breaking changes without version bump
+        if: steps.breaking-check.outputs.result == 'breaking-changes-detected'
+        run: |
+          echo "Breaking changes detected! This requires:"
+          echo "1. Major version increment"
+          echo "2. Updated CHANGELOG.md"
+          echo "3. Migration documentation"
+          echo ""
+          echo "If this is intentional, ensure the commit includes proper version bumping."
+          exit 1

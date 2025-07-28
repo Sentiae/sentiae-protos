@@ -1,390 +1,920 @@
 syntax = "proto3";
+
 package auth.v1;
 
 import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/Sentiae/sentiae-protos/gen/go/auth/v1";
 
-// AuthInternalService provides secure, internal-only methods for other
+// AuthInternalService provides secure, internal-only RPC methods for other
 // microservices to interact with the authentication system.
+//
+// This service is designed for service-to-service communication within the
+// Sentiae platform and should NOT be exposed to external clients.
+//
+// Key features:
+// - Token validation with full organizational context
+// - User profile and permission management
+// - Organization and team hierarchy navigation
+// - Cross-organization access control
+// - Batch operations for performance optimization
+//
+// Authentication:
+// All requests must include valid service-to-service authentication headers.
+// Individual user tokens are validated through the ValidateToken RPC.
+//
+// Example usage:
+//   client := auth.NewAuthInternalServiceClient(conn)
+//   resp, err := client.ValidateToken(ctx, &ValidateTokenRequest{
+//     Token: userToken,
+//     IncludePermissions: true,
+//   })
 service AuthInternalService {
-  // Enhanced token validation with full organizational context
+  // ValidateToken validates a JWT token and returns user information.
+  //
+  // This is the primary method for other services to validate user authentication.
+  // The response includes the user's organizational context and permissions.
+  //
+  // Returns:
+  //   - is_valid: false if token is expired, malformed, or revoked
+  //   - Enhanced user context if token is valid
+  //
+  // Example:
+  //   resp, _ := client.ValidateToken(ctx, &ValidateTokenRequest{
+  //     Token: "eyJhbGc...",
+  //     IncludePermissions: true,
+  //   })
   rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
 
-  // Enhanced user details with complete profile and organizational context
+  // GetUser retrieves detailed information about a specific user.
+  //
+  // This method provides comprehensive user data including profile information,
+  // organization memberships, team assignments, and permissions.
+  //
+  // Use cases:
+  //   - Displaying user profiles
+  //   - Access control decisions
+  //   - User administration interfaces
+  //
+  // The response can be customized using the include_* flags to optimize
+  // network bandwidth and processing time.
   rpc GetUser(GetUserRequest) returns (GetUserResponse);
 
-  // Batch user retrieval with enhanced profiles
+  // GetUsersBatch retrieves information for multiple users in a single request.
+  //
+  // This method is optimized for bulk operations and should be preferred over
+  // multiple individual GetUser calls when retrieving data for multiple users.
+  //
+  // Limitations:
+  //   - Maximum 100 user IDs per request
+  //   - Non-existent user IDs are silently ignored
+  //
+  // Performance tip: Use include_* flags judiciously to avoid over-fetching data.
   rpc GetUsersBatch(GetUsersBatchRequest) returns (GetUsersBatchResponse);
 
-  // Permission checking methods
+  // CheckPermission verifies if a user has a specific permission within a team.
+  //
+  // This method checks team-level permissions based on the user's role
+  // within the specified team.
+  //
+  // Permission format: "resource:action" (e.g., "projects:write", "users:read")
   rpc CheckPermission(CheckPermissionRequest) returns (CheckPermissionResponse);
+
+  // CheckOrganizationPermission verifies if a user has a specific permission
+  // at the organization level.
+  //
+  // Organization permissions typically supersede team permissions for
+  // organization-wide resources.
   rpc CheckOrganizationPermission(CheckOrganizationPermissionRequest) returns (CheckOrganizationPermissionResponse);
+
+  // GetUserPermissions retrieves all permissions for a user in a given context.
+  //
+  // This method returns:
+  //   - Organization permissions (if organization_id provided)
+  //   - Team permissions (if team_id provided)
+  //   - Effective permissions (union of all applicable permissions)
   rpc GetUserPermissions(GetUserPermissionsRequest) returns (GetUserPermissionsResponse);
 
-  // Organization management
+  // GetOrganization retrieves detailed information about an organization.
+  //
+  // The response includes member and team counts for capacity planning
+  // and administrative purposes.
   rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+
+  // ListUserOrganizations returns all organizations a user has access to.
+  //
+  // This includes:
+  //   - Organizations where the user is a direct member
+  //   - Connected organizations accessible through cross-org permissions
   rpc ListUserOrganizations(ListUserOrganizationsRequest) returns (ListUserOrganizationsResponse);
+
+  // GetOrganizationMembers retrieves a paginated list of organization members.
+  //
+  // Results are ordered by join date (newest first) by default.
+  // Use limit and offset for pagination.
   rpc GetOrganizationMembers(GetOrganizationMembersRequest) returns (GetOrganizationMembersResponse);
 
-  // Team management
+  // GetTeamMembers retrieves all members of a specific team.
+  //
+  // The response includes each member's role within the team and basic
+  // profile information.
   rpc GetTeamMembers(GetTeamMembersRequest) returns (GetTeamMembersResponse);
+
+  // GetTeamHierarchy returns the complete team structure for an organization.
+  //
+  // The response is a tree structure with root teams and their nested
+  // child teams, useful for rendering organizational charts.
   rpc GetTeamHierarchy(GetTeamHierarchyRequest) returns (GetTeamHierarchyResponse);
+
+  // GetTeam retrieves detailed information about a specific team.
+  //
+  // The response includes the team's position in the hierarchy with
+  // parent and child team references.
   rpc GetTeam(GetTeamRequest) returns (GetTeamResponse);
+
+  // ListOrganizationTeams returns teams within an organization.
+  //
+  // Use parent_team_id to filter for teams under a specific parent,
+  // or leave empty to get all teams in the organization.
   rpc ListOrganizationTeams(ListOrganizationTeamsRequest) returns (ListOrganizationTeamsResponse);
 
-  // Access validation methods
+  // ValidateOrganizationAccess checks if a user can access an organization.
+  //
+  // Access types:
+  //   - "member": Direct membership in the organization
+  //   - "cross_org_access": Temporary cross-organization access
+  //   - "connected": Access through connected organization relationship
   rpc ValidateOrganizationAccess(ValidateOrganizationAccessRequest) returns (ValidateOrganizationAccessResponse);
+
+  // ValidateTeamAccess checks if a user can access a specific team.
+  //
+  // Access is granted if the user is a member of the team or has
+  // appropriate organization-level permissions.
   rpc ValidateTeamAccess(ValidateTeamAccessRequest) returns (ValidateTeamAccessResponse);
+
+  // GetUserAccessContext retrieves a user's complete access context.
+  //
+  // This method provides a comprehensive view of all organizations and
+  // teams a user can access, useful for authorization decisions.
   rpc GetUserAccessContext(GetUserAccessContextRequest) returns (GetUserAccessContextResponse);
 
-  // Cross-organization features
+  // ListConnectedOrganizations returns organizations connected to a given org.
+  //
+  // Connected organizations have established trust relationships enabling
+  // controlled cross-organization collaboration.
+  //
+  // Connection types: "partner", "subsidiary", "parent", "vendor"
   rpc ListConnectedOrganizations(ListConnectedOrganizationsRequest) returns (ListConnectedOrganizationsResponse);
+
+  // ListUserCrossOrganizationAccess returns a user's cross-org permissions.
+  //
+  // This includes temporary access grants to other organizations with
+  // their respective access levels and expiration times.
   rpc ListUserCrossOrganizationAccess(ListUserCrossOrganizationAccessRequest) returns (ListUserCrossOrganizationAccessResponse);
 
-  // User search and filtering
+  // SearchUsers performs a text search across users.
+  //
+  // Search includes:
+  //   - Full name (case-insensitive)
+  //   - Email address
+  //
+  // Results are ranked by relevance and limited to users the caller
+  // has permission to view.
   rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse);
+
+  // GetUsersByOrganization retrieves all users in an organization.
+  //
+  // This method supports pagination and returns users ordered by
+  // their join date (newest first).
   rpc GetUsersByOrganization(GetUsersByOrganizationRequest) returns (GetUsersByOrganizationResponse);
 
-  // Session enrichment
+  // EnrichUserSession adds context to an authenticated user session.
+  //
+  // This method is typically called after login to populate the user's
+  // session with their available organizations, teams, and permissions.
+  //
+  // The session_context map can include custom key-value pairs for
+  // application-specific session data.
   rpc EnrichUserSession(EnrichUserSessionRequest) returns (EnrichUserSessionResponse);
 
-  // Utility methods
+  // GetOrganizationByTeam finds the organization that owns a team.
+  //
+  // This utility method is useful when you have a team ID but need
+  // the parent organization's information.
   rpc GetOrganizationByTeam(GetOrganizationByTeamRequest) returns (GetOrganizationByTeamResponse);
 }
 
-// Enhanced ValidateToken with organizational context
+// ValidateTokenRequest is the request message for ValidateToken RPC.
 message ValidateTokenRequest {
+  // JWT token to validate (required).
+  // Expected format: "Bearer <token>" or just "<token>".
   string token = 1;
-  bool include_permissions = 2; // Include user permissions in response
-  bool include_organizations = 3; // Include user organizations in response
-}
 
-message ValidateTokenResponse {
-  bool is_valid = 1;
-  string user_id = 2;
-  string team_id = 3;
-  repeated string scopes = 4;
-  // Enhanced context
-  string primary_organization_id = 5;
-  repeated string organization_ids = 6;
-  repeated string team_permissions = 7;
-  repeated string organization_permissions = 8;
-  UserProfile user_profile = 9;
-}
+  // If true, includes the user's permissions in the response.
+  // This adds latency but provides complete authorization context.
+  bool include_permissions = 2;
 
-// Enhanced GetUser with complete profile
-message GetUserRequest {
-  string user_id = 1;
-  bool include_organizations = 2;
-  bool include_teams = 3;
-  bool include_permissions = 4;
-}
-
-message GetUserResponse {
-  string user_id = 1;
-  string team_id = 2;
-  string email = 3;
-  google.protobuf.Timestamp created_at = 4;
-  // Enhanced profile data
-  UserProfile profile = 5;
-  repeated Organization organizations = 6;
-  repeated Team teams = 7;
-  repeated UserPermission permissions = 8;
-}
-
-// Enhanced batch operations
-message GetUsersBatchRequest {
-  repeated string user_ids = 1;
-  bool include_profiles = 2;
+  // If true, includes the user's organization memberships.
+  // Useful for multi-tenant applications.
   bool include_organizations = 3;
 }
 
+// ValidateTokenResponse is the response message for ValidateToken RPC.
+message ValidateTokenResponse {
+  // Whether the token is valid and not expired.
+  bool is_valid = 1;
+
+  // User ID extracted from the token (empty if invalid).
+  string user_id = 2;
+
+  // Primary team ID for the user.
+  // @deprecated: Use organization context instead.
+  string team_id = 3;
+
+  // OAuth scopes associated with the token.
+  // Example: ["read:profile", "write:projects"]
+  repeated string scopes = 4;
+
+  // User's primary organization ID.
+  string primary_organization_id = 5;
+
+  // All organization IDs the user has access to.
+  repeated string organization_ids = 6;
+
+  // Permissions within the user's current team context.
+  repeated string team_permissions = 7;
+
+  // Permissions at the organization level.
+  repeated string organization_permissions = 8;
+
+  // Basic user profile information.
+  UserProfile user_profile = 9;
+}
+
+// GetUserRequest is the request message for GetUser RPC.
+message GetUserRequest {
+  // User ID to retrieve (required).
+  // Format: UUID v4 string.
+  string user_id = 1;
+
+  // Include organization memberships in response.
+  bool include_organizations = 2;
+
+  // Include team memberships in response.
+  bool include_teams = 3;
+
+  // Include user permissions in response.
+  bool include_permissions = 4;
+}
+
+// GetUserResponse is the response message for GetUser RPC.
+message GetUserResponse {
+  // User's unique identifier.
+  string user_id = 1;
+
+  // Primary team ID.
+  // @deprecated: Use teams array for team information.
+  string team_id = 2;
+
+  // User's email address.
+  string email = 3;
+
+  // Account creation timestamp.
+  google.protobuf.Timestamp created_at = 4;
+
+  // Complete user profile information.
+  UserProfile profile = 5;
+
+  // Organizations the user belongs to (if requested).
+  repeated Organization organizations = 6;
+
+  // Teams the user is a member of (if requested).
+  repeated Team teams = 7;
+
+  // User's permissions across contexts (if requested).
+  repeated UserPermission permissions = 8;
+}
+
+// GetUsersBatchRequest is the request message for GetUsersBatch RPC.
+message GetUsersBatchRequest {
+  // List of user IDs to retrieve (required).
+  // Maximum: 100 user IDs per request.
+  repeated string user_ids = 1;
+
+  // Include full profile information for each user.
+  bool include_profiles = 2;
+
+  // Include organization memberships for each user.
+  bool include_organizations = 3;
+}
+
+// GetUsersBatchResponse is the response message for GetUsersBatch RPC.
 message GetUsersBatchResponse {
+  // List of users found.
+  // Users not found or inaccessible are omitted from results.
   repeated EnhancedUser users = 1;
 }
 
-// Permission checking
+// CheckPermissionRequest is the request message for CheckPermission RPC.
 message CheckPermissionRequest {
+  // User ID to check permissions for (required).
   string user_id = 1;
+
+  // Team context for permission check (required).
   string team_id = 2;
+
+  // Permission to check (required).
+  // Format: "resource:action" (e.g., "projects:write").
   string permission = 3;
 }
 
+// CheckPermissionResponse is the response message for CheckPermission RPC.
 message CheckPermissionResponse {
+  // Whether the user has the requested permission.
   bool has_permission = 1;
+
+  // Name of the role granting this permission (if applicable).
+  // Example: "Team Admin", "Developer".
   string role_name = 2;
 }
 
+// CheckOrganizationPermissionRequest is the request for CheckOrganizationPermission RPC.
 message CheckOrganizationPermissionRequest {
+  // User ID to check permissions for (required).
   string user_id = 1;
+
+  // Organization context for permission check (required).
   string organization_id = 2;
+
+  // Permission to check (required).
+  // Format: "resource:action" (e.g., "billing:manage", "members:invite").
   string permission = 3;
 }
 
+// CheckOrganizationPermissionResponse is the response for CheckOrganizationPermission RPC.
 message CheckOrganizationPermissionResponse {
+  // Whether the user has the requested permission.
   bool has_permission = 1;
+
+  // Name of the organization role granting this permission.
+  // Example: "Organization Owner", "Organization Admin".
   string role_name = 2;
 }
 
+// GetUserPermissionsRequest is the request for GetUserPermissions RPC.
 message GetUserPermissionsRequest {
+  // User ID to get permissions for (required).
   string user_id = 1;
+
+  // Organization context (optional).
+  // If provided, returns organization-level permissions.
   string organization_id = 2;
+
+  // Team context (optional).
+  // If provided, returns team-level permissions.
   string team_id = 3;
 }
 
+// GetUserPermissionsResponse is the response for GetUserPermissions RPC.
 message GetUserPermissionsResponse {
+  // Permissions at the organization level.
+  // Example: ["billing:view", "members:manage"].
   repeated string organization_permissions = 1;
+
+  // Permissions at the team level.
+  // Example: ["projects:write", "deployments:execute"].
   repeated string team_permissions = 2;
+
+  // Combined effective permissions from all contexts.
+  // This is the union of organization and team permissions.
   repeated string effective_permissions = 3;
 }
 
-// Organization management
+// GetOrganizationRequest is the request for GetOrganization RPC.
 message GetOrganizationRequest {
+  // Organization ID to retrieve (required).
   string organization_id = 1;
 }
 
+// GetOrganizationResponse is the response for GetOrganization RPC.
 message GetOrganizationResponse {
+  // Complete organization details.
   Organization organization = 1;
+
+  // Total number of members in the organization.
   int32 member_count = 2;
+
+  // Total number of teams in the organization.
   int32 team_count = 3;
 }
 
+// ListUserOrganizationsRequest is the request for ListUserOrganizations RPC.
 message ListUserOrganizationsRequest {
+  // User ID to list organizations for (required).
   string user_id = 1;
 }
 
+// ListUserOrganizationsResponse is the response for ListUserOrganizations RPC.
 message ListUserOrganizationsResponse {
+  // Organizations where user is a direct member.
   repeated Organization organizations = 1;
+
+  // Organizations accessible through connections.
+  // These are organizations the user can access but is not a direct member of.
   repeated Organization connected_organizations = 2;
 }
 
+// GetOrganizationMembersRequest is the request for GetOrganizationMembers RPC.
 message GetOrganizationMembersRequest {
+  // Organization ID to get members for (required).
   string organization_id = 1;
+
+  // Maximum number of members to return.
+  // Default: 50, Maximum: 100.
   int32 limit = 2;
+
+  // Number of members to skip for pagination.
+  // Default: 0.
   int32 offset = 3;
 }
 
+// GetOrganizationMembersResponse is the response for GetOrganizationMembers RPC.
 message GetOrganizationMembersResponse {
+  // List of organization members.
   repeated OrganizationMember members = 1;
+
+  // Total count of members (for pagination).
   int32 total_count = 2;
 }
 
-// Team management
+// GetTeamMembersRequest is the request for GetTeamMembers RPC.
 message GetTeamMembersRequest {
+  // Team ID to get members for (required).
   string team_id = 1;
 }
 
+// GetTeamMembersResponse is the response for GetTeamMembers RPC.
 message GetTeamMembersResponse {
+  // List of team members with their roles.
   repeated TeamMember members = 1;
 }
 
+// GetTeamHierarchyRequest is the request for GetTeamHierarchy RPC.
 message GetTeamHierarchyRequest {
+  // Organization ID to get team hierarchy for (required).
   string organization_id = 1;
 }
 
+// GetTeamHierarchyResponse is the response for GetTeamHierarchy RPC.
 message GetTeamHierarchyResponse {
+  // Root-level teams with nested child teams.
+  // The full hierarchy is represented as a tree structure.
   repeated Team root_teams = 1;
 }
 
+// GetTeamRequest is the request for GetTeam RPC.
 message GetTeamRequest {
+  // Team ID to retrieve (required).
   string team_id = 1;
 }
 
+// GetTeamResponse is the response for GetTeam RPC.
 message GetTeamResponse {
+  // Complete team details.
   Team team = 1;
+
+  // Organization that owns this team.
   Organization organization = 2;
+
+  // Parent team if this is a nested team.
+  // Null for root-level teams.
   Team parent_team = 3;
+
+  // Direct child teams under this team.
   repeated Team child_teams = 4;
 }
 
+// ListOrganizationTeamsRequest is the request for ListOrganizationTeams RPC.
 message ListOrganizationTeamsRequest {
+  // Organization ID to list teams for (required).
   string organization_id = 1;
+
+  // Optional parent team ID to filter by.
+  // If empty, returns all teams in the organization.
   string parent_team_id = 2;
 }
 
+// ListOrganizationTeamsResponse is the response for ListOrganizationTeams RPC.
 message ListOrganizationTeamsResponse {
+  // List of teams matching the filter criteria.
   repeated Team teams = 1;
 }
 
-// Access validation
+// ValidateOrganizationAccessRequest is the request for ValidateOrganizationAccess RPC.
 message ValidateOrganizationAccessRequest {
+  // User ID to validate access for (required).
   string user_id = 1;
+
+  // Organization ID to check access to (required).
   string organization_id = 2;
 }
 
+// ValidateOrganizationAccessResponse is the response for ValidateOrganizationAccess RPC.
 message ValidateOrganizationAccessResponse {
+  // Whether the user has access to the organization.
   bool has_access = 1;
-  string access_type = 2; // "member", "cross_org_access", "connected"
+
+  // Type of access the user has.
+  // Values: "member", "cross_org_access", "connected".
+  string access_type = 2;
 }
 
+// ValidateTeamAccessRequest is the request for ValidateTeamAccess RPC.
 message ValidateTeamAccessRequest {
+  // User ID to validate access for (required).
   string user_id = 1;
+
+  // Team ID to check access to (required).
   string team_id = 2;
 }
 
+// ValidateTeamAccessResponse is the response for ValidateTeamAccess RPC.
 message ValidateTeamAccessResponse {
+  // Whether the user has access to the team.
   bool has_access = 1;
+
+  // Organization ID that owns the team.
+  // Useful for determining organization context.
   string organization_id = 2;
 }
 
+// GetUserAccessContextRequest is the request for GetUserAccessContext RPC.
 message GetUserAccessContextRequest {
+  // User ID to get access context for (required).
   string user_id = 1;
 }
 
+// GetUserAccessContextResponse is the response for GetUserAccessContext RPC.
 message GetUserAccessContextResponse {
+  // User ID (echoed from request).
   string user_id = 1;
+
+  // User's primary organization.
   string primary_organization_id = 2;
+
+  // All organizations the user can access.
+  // Includes both direct memberships and cross-org access.
   repeated string accessible_organization_ids = 3;
+
+  // All teams the user can access across all organizations.
   repeated string accessible_team_ids = 4;
+
+  // Whether the user has enterprise-level access.
+  // Enterprise users may have special privileges across organizations.
   bool is_enterprise_user = 5;
 }
 
-// Cross-organization features
+// ListConnectedOrganizationsRequest is the request for ListConnectedOrganizations RPC.
 message ListConnectedOrganizationsRequest {
+  // Organization ID to list connections for (required).
   string organization_id = 1;
 }
 
+// ListConnectedOrganizationsResponse is the response for ListConnectedOrganizations RPC.
 message ListConnectedOrganizationsResponse {
+  // List of organizations connected to the requested organization.
   repeated ConnectedOrganization connected_organizations = 1;
 }
 
+// ListUserCrossOrganizationAccessRequest is the request for ListUserCrossOrganizationAccess RPC.
 message ListUserCrossOrganizationAccessRequest {
+  // User ID to list cross-org access for (required).
   string user_id = 1;
 }
 
+// ListUserCrossOrganizationAccessResponse is the response for ListUserCrossOrganizationAccess RPC.
 message ListUserCrossOrganizationAccessResponse {
+  // List of cross-organization access grants for the user.
   repeated CrossOrganizationAccess access_list = 1;
 }
 
-// User search and filtering
+// SearchUsersRequest is the request for SearchUsers RPC.
 message SearchUsersRequest {
-  string query = 1; // Search in name, email
-  string organization_id = 2; // Optional: filter by organization
+  // Search query string (required).
+  // Searches in user's full name and email address.
+  // Minimum length: 2 characters.
+  string query = 1;
+
+  // Optional organization filter.
+  // If provided, only searches users within this organization.
+  string organization_id = 2;
+
+  // Maximum number of results to return.
+  // Default: 20, Maximum: 100.
   int32 limit = 3;
+
+  // Number of results to skip for pagination.
+  // Default: 0.
   int32 offset = 4;
 }
 
+// SearchUsersResponse is the response for SearchUsers RPC.
 message SearchUsersResponse {
+  // Users matching the search criteria.
   repeated EnhancedUser users = 1;
+
+  // Total number of matching users (for pagination).
   int32 total_count = 2;
 }
 
+// GetUsersByOrganizationRequest is the request for GetUsersByOrganization RPC.
 message GetUsersByOrganizationRequest {
+  // Organization ID to get users for (required).
   string organization_id = 1;
+
+  // Maximum number of users to return.
+  // Default: 50, Maximum: 100.
   int32 limit = 2;
+
+  // Number of users to skip for pagination.
+  // Default: 0.
   int32 offset = 3;
 }
 
+// GetUsersByOrganizationResponse is the response for GetUsersByOrganization RPC.
 message GetUsersByOrganizationResponse {
+  // Users in the organization.
   repeated EnhancedUser users = 1;
+
+  // Total number of users in the organization (for pagination).
   int32 total_count = 2;
 }
 
-// Session enrichment
+// EnrichUserSessionRequest is the request for EnrichUserSession RPC.
 message EnrichUserSessionRequest {
+  // User ID to enrich session for (required).
   string user_id = 1;
+
+  // Current team context (optional).
+  // If provided, team-specific permissions are included.
   string current_team_id = 2;
+
+  // Current organization context (optional).
+  // If provided, organization-specific data is prioritized.
   string current_organization_id = 3;
 }
 
+// EnrichUserSessionResponse is the response for EnrichUserSession RPC.
 message EnrichUserSessionResponse {
+  // User's profile information.
   UserProfile profile = 1;
+
+  // Organizations available to the user.
   repeated Organization available_organizations = 2;
+
+  // Teams available to the user in current organization context.
   repeated Team available_teams = 3;
+
+  // Effective permissions in the current context.
   repeated string current_permissions = 4;
+
+  // Additional session context data.
+  // Can include custom application-specific key-value pairs.
   map<string, string> session_context = 5;
 }
 
-// Utility methods
+// GetOrganizationByTeamRequest is the request for GetOrganizationByTeam RPC.
 message GetOrganizationByTeamRequest {
+  // Team ID to find organization for (required).
   string team_id = 1;
 }
 
+// GetOrganizationByTeamResponse is the response for GetOrganizationByTeam RPC.
 message GetOrganizationByTeamResponse {
+  // Organization that owns the specified team.
   Organization organization = 1;
 }
 
-// Data structures
+// UserProfile contains basic user information.
+//
+// This message is used across multiple RPCs to provide consistent
+// user profile data.
 message UserProfile {
+  // User's unique identifier.
   string user_id = 1;
+
+  // User's display name.
   string full_name = 2;
+
+  // URL to user's avatar image.
+  // May be empty if user has no avatar.
   string avatar_url = 3;
+
+  // User's email address.
   string email = 4;
+
+  // Profile creation timestamp.
   google.protobuf.Timestamp created_at = 5;
+
+  // Last profile update timestamp.
   google.protobuf.Timestamp updated_at = 6;
 }
 
+// Organization represents a company or group in the system.
+//
+// Organizations are the top-level container for teams and users.
 message Organization {
+  // Unique organization identifier.
   string id = 1;
+
+  // Organization display name.
+  // Example: "Acme Corporation".
   string name = 2;
+
+  // URL-friendly organization identifier.
+  // Example: "acme-corp".
+  // Used in URLs and API paths.
   string slug = 3;
+
+  // Human-readable description of the organization.
   string description = 4;
+
+  // URL to organization's logo image.
   string logo_url = 5;
+
+  // Organization's website URL.
   string website = 6;
+
+  // Organization creation timestamp.
   google.protobuf.Timestamp created_at = 7;
+
+  // Last organization update timestamp.
   google.protobuf.Timestamp updated_at = 8;
 }
 
+// Team represents a group within an organization.
+//
+// Teams can be hierarchical, with parent-child relationships forming
+// a tree structure within the organization.
 message Team {
+  // Unique team identifier.
   string id = 1;
+
+  // Parent organization ID (required).
   string organization_id = 2;
+
+  // Parent team ID for nested teams.
+  // Empty for root-level teams.
   string parent_team_id = 3;
+
+  // Team display name.
+  // Example: "Engineering", "Product Design".
   string name = 4;
+
+  // Depth in the team hierarchy.
+  // 0 for root teams, increments for each level.
   int32 hierarchy_depth = 5;
+
+  // Materialized path for efficient hierarchy queries.
+  // Format: "/root_id/parent_id/team_id".
   string team_path = 6;
+
+  // Team creation timestamp.
   google.protobuf.Timestamp created_at = 7;
+
+  // Last team update timestamp.
   google.protobuf.Timestamp updated_at = 8;
+
+  // Nested child teams (only populated in hierarchy queries).
   repeated Team child_teams = 9;
 }
 
+// TeamMember represents a user's membership in a team.
 message TeamMember {
+  // User's unique identifier.
   string user_id = 1;
+
+  // User's display name.
   string full_name = 2;
+
+  // Role within the team.
+  // Example: "Team Lead", "Developer", "Observer".
   string role_name = 3;
+
+  // User's email address.
   string email = 4;
+
+  // URL to user's avatar image.
   string avatar_url = 5;
+
+  // Timestamp when user joined the team.
   google.protobuf.Timestamp joined_at = 6;
 }
 
+// OrganizationMember represents a user's membership in an organization.
 message OrganizationMember {
+  // User's unique identifier.
   string user_id = 1;
+
+  // User's display name.
   string full_name = 2;
+
+  // User's email address.
   string email = 3;
+
+  // URL to user's avatar image.
   string avatar_url = 4;
+
+  // Organization-level role.
+  // Example: "Organization Owner", "Organization Member".
   string organization_role_name = 5;
+
+  // List of team names the user belongs to.
   repeated string team_memberships = 6;
+
+  // Timestamp when user joined the organization.
   google.protobuf.Timestamp joined_at = 7;
 }
 
+// UserPermission represents permissions in a specific context.
 message UserPermission {
-  string context_type = 1; // "organization" or "team"
-  string context_id = 2;   // organization_id or team_id
+  // Type of context for these permissions.
+  // Values: "organization" or "team".
+  string context_type = 1;
+
+  // ID of the context (organization_id or team_id).
+  string context_id = 2;
+
+  // Role granting these permissions.
   string role_name = 3;
+
+  // List of permission strings.
+  // Format: "resource:action" (e.g., "projects:delete").
   repeated string permissions = 4;
 }
 
+// EnhancedUser provides comprehensive user information.
+//
+// Used in batch operations and search results.
 message EnhancedUser {
+  // User's unique identifier.
   string user_id = 1;
+
+  // User's email address.
   string email = 2;
+
+  // Complete user profile.
   UserProfile profile = 3;
+
+  // Organizations the user belongs to (if requested).
   repeated Organization organizations = 4;
+
+  // Teams the user is a member of (if requested).
   repeated Team teams = 5;
+
+  // Account creation timestamp.
   google.protobuf.Timestamp created_at = 6;
 }
 
+// ConnectedOrganization represents a trust relationship between organizations.
 message ConnectedOrganization {
+  // Connected organization details.
   Organization organization = 1;
-  string connection_type = 2; // "partner", "subsidiary", "parent", etc.
-  string status = 3; // "active", "pending", "inactive"
+
+  // Type of connection.
+  // Values: "partner", "subsidiary", "parent", "vendor", "customer".
+  string connection_type = 2;
+
+  // Connection status.
+  // Values: "active", "pending", "inactive", "expired".
+  string status = 3;
+
+  // When the connection was established.
   google.protobuf.Timestamp created_at = 4;
 }
 
+// CrossOrganizationAccess represents temporary access to another organization.
+//
+// This enables users from one organization to collaborate with another
+// organization without permanent membership.
 message CrossOrganizationAccess {
+  // Unique access grant identifier.
   string id = 1;
+
+  // Organization granting the access.
   string source_organization_id = 2;
+
+  // Organization being accessed.
   Organization target_organization = 3;
-  string access_level = 4; // "guest", "member", "admin"
+
+  // Level of access granted.
+  // Values: "guest" (read-only), "member" (standard), "admin" (elevated).
+  string access_level = 4;
+
+  // When this access expires (optional).
+  // Null for permanent access grants.
   google.protobuf.Timestamp expires_at = 5;
+
+  // When this access was granted.
   google.protobuf.Timestamp created_at = 6;
 }
