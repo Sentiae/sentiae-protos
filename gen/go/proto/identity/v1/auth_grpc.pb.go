@@ -28,13 +28,57 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// AuthServiceInterface - Expected interface from auth-service
+// AuthServiceInterface defines the expected interface for auth-service.
+//
+// This service interface is used by the identity-service to communicate
+// with the auth-service for authentication and user management operations.
+//
+// Key responsibilities:
+// - Token validation for authenticated requests
+// - User account creation during invitation flows
+// - Batch user information retrieval
+//
+// Security:
+// All calls to this service should include proper service-to-service
+// authentication headers to ensure secure inter-service communication.
+//
+// Example usage:
+//
+//	client := identity.NewAuthServiceInterfaceClient(conn)
+//	resp, err := client.ValidateToken(ctx, &AuthValidateTokenRequest{
+//	  Token: bearerToken,
+//	})
 type AuthServiceInterfaceClient interface {
-	// Validates a JWT and returns its claims.
+	// ValidateToken validates a JWT token and returns user information.
+	//
+	// This method is called by identity-service to:
+	// - Verify incoming authentication tokens
+	// - Extract user identity from valid tokens
+	// - Ensure users have valid authentication state
+	//
+	// Returns user_id, team_id, and email for valid tokens.
+	// For invalid tokens, valid=false and other fields are empty.
 	ValidateToken(ctx context.Context, in *AuthValidateTokenRequest, opts ...grpc.CallOption) (*AuthValidateTokenResponse, error)
-	// Retrieves user details for a batch of user IDs.
+	// GetUsersBatch retrieves basic user information for multiple users.
+	//
+	// This method is used for:
+	// - Populating user details in organization/team member lists
+	// - Resolving user IDs to email addresses for notifications
+	// - Batch operations that need user context
+	//
+	// Non-existent user IDs are omitted from the response.
 	GetUsersBatch(ctx context.Context, in *AuthGetUsersBatchRequest, opts ...grpc.CallOption) (*AuthGetUsersBatchResponse, error)
-	// Registers a new user account (for invitation-based account creation).
+	// RegisterUser creates a new user account during invitation acceptance.
+	//
+	// This method is called when:
+	// - A user accepts an invitation but doesn't have an account
+	// - The invitation included the create_account flag
+	// - The email from the invitation matches the registration request
+	//
+	// The new user is created with the provided credentials and
+	// automatically assigned to the specified team context.
+	//
+	// Returns the new user's ID and profile information.
 	RegisterUser(ctx context.Context, in *AuthRegisterUserRequest, opts ...grpc.CallOption) (*AuthRegisterUserResponse, error)
 }
 
@@ -80,13 +124,57 @@ func (c *authServiceInterfaceClient) RegisterUser(ctx context.Context, in *AuthR
 // All implementations must embed UnimplementedAuthServiceInterfaceServer
 // for forward compatibility.
 //
-// AuthServiceInterface - Expected interface from auth-service
+// AuthServiceInterface defines the expected interface for auth-service.
+//
+// This service interface is used by the identity-service to communicate
+// with the auth-service for authentication and user management operations.
+//
+// Key responsibilities:
+// - Token validation for authenticated requests
+// - User account creation during invitation flows
+// - Batch user information retrieval
+//
+// Security:
+// All calls to this service should include proper service-to-service
+// authentication headers to ensure secure inter-service communication.
+//
+// Example usage:
+//
+//	client := identity.NewAuthServiceInterfaceClient(conn)
+//	resp, err := client.ValidateToken(ctx, &AuthValidateTokenRequest{
+//	  Token: bearerToken,
+//	})
 type AuthServiceInterfaceServer interface {
-	// Validates a JWT and returns its claims.
+	// ValidateToken validates a JWT token and returns user information.
+	//
+	// This method is called by identity-service to:
+	// - Verify incoming authentication tokens
+	// - Extract user identity from valid tokens
+	// - Ensure users have valid authentication state
+	//
+	// Returns user_id, team_id, and email for valid tokens.
+	// For invalid tokens, valid=false and other fields are empty.
 	ValidateToken(context.Context, *AuthValidateTokenRequest) (*AuthValidateTokenResponse, error)
-	// Retrieves user details for a batch of user IDs.
+	// GetUsersBatch retrieves basic user information for multiple users.
+	//
+	// This method is used for:
+	// - Populating user details in organization/team member lists
+	// - Resolving user IDs to email addresses for notifications
+	// - Batch operations that need user context
+	//
+	// Non-existent user IDs are omitted from the response.
 	GetUsersBatch(context.Context, *AuthGetUsersBatchRequest) (*AuthGetUsersBatchResponse, error)
-	// Registers a new user account (for invitation-based account creation).
+	// RegisterUser creates a new user account during invitation acceptance.
+	//
+	// This method is called when:
+	// - A user accepts an invitation but doesn't have an account
+	// - The invitation included the create_account flag
+	// - The email from the invitation matches the registration request
+	//
+	// The new user is created with the provided credentials and
+	// automatically assigned to the specified team context.
+	//
+	// Returns the new user's ID and profile information.
 	RegisterUser(context.Context, *AuthRegisterUserRequest) (*AuthRegisterUserResponse, error)
 	mustEmbedUnimplementedAuthServiceInterfaceServer()
 }

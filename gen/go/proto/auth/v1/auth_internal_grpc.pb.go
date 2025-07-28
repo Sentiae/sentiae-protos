@@ -47,41 +47,182 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// AuthInternalService provides secure, internal-only methods for other
+// AuthInternalService provides secure, internal-only RPC methods for other
 // microservices to interact with the authentication system.
+//
+// This service is designed for service-to-service communication within the
+// Sentiae platform and should NOT be exposed to external clients.
+//
+// Key features:
+// - Token validation with full organizational context
+// - User profile and permission management
+// - Organization and team hierarchy navigation
+// - Cross-organization access control
+// - Batch operations for performance optimization
+//
+// Authentication:
+// All requests must include valid service-to-service authentication headers.
+// Individual user tokens are validated through the ValidateToken RPC.
+//
+// Example usage:
+//
+//	client := auth.NewAuthInternalServiceClient(conn)
+//	resp, err := client.ValidateToken(ctx, &ValidateTokenRequest{
+//	  Token: userToken,
+//	  IncludePermissions: true,
+//	})
 type AuthInternalServiceClient interface {
-	// Enhanced token validation with full organizational context
+	// ValidateToken validates a JWT token and returns user information.
+	//
+	// This is the primary method for other services to validate user authentication.
+	// The response includes the user's organizational context and permissions.
+	//
+	// Returns:
+	//   - is_valid: false if token is expired, malformed, or revoked
+	//   - Enhanced user context if token is valid
+	//
+	// Example:
+	//
+	//	resp, _ := client.ValidateToken(ctx, &ValidateTokenRequest{
+	//	  Token: "eyJhbGc...",
+	//	  IncludePermissions: true,
+	//	})
 	ValidateToken(ctx context.Context, in *ValidateTokenRequest, opts ...grpc.CallOption) (*ValidateTokenResponse, error)
-	// Enhanced user details with complete profile and organizational context
+	// GetUser retrieves detailed information about a specific user.
+	//
+	// This method provides comprehensive user data including profile information,
+	// organization memberships, team assignments, and permissions.
+	//
+	// Use cases:
+	//   - Displaying user profiles
+	//   - Access control decisions
+	//   - User administration interfaces
+	//
+	// The response can be customized using the include_* flags to optimize
+	// network bandwidth and processing time.
 	GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error)
-	// Batch user retrieval with enhanced profiles
+	// GetUsersBatch retrieves information for multiple users in a single request.
+	//
+	// This method is optimized for bulk operations and should be preferred over
+	// multiple individual GetUser calls when retrieving data for multiple users.
+	//
+	// Limitations:
+	//   - Maximum 100 user IDs per request
+	//   - Non-existent user IDs are silently ignored
+	//
+	// Performance tip: Use include_* flags judiciously to avoid over-fetching data.
 	GetUsersBatch(ctx context.Context, in *GetUsersBatchRequest, opts ...grpc.CallOption) (*GetUsersBatchResponse, error)
-	// Permission checking methods
+	// CheckPermission verifies if a user has a specific permission within a team.
+	//
+	// This method checks team-level permissions based on the user's role
+	// within the specified team.
+	//
+	// Permission format: "resource:action" (e.g., "projects:write", "users:read")
 	CheckPermission(ctx context.Context, in *CheckPermissionRequest, opts ...grpc.CallOption) (*CheckPermissionResponse, error)
+	// CheckOrganizationPermission verifies if a user has a specific permission
+	// at the organization level.
+	//
+	// Organization permissions typically supersede team permissions for
+	// organization-wide resources.
 	CheckOrganizationPermission(ctx context.Context, in *CheckOrganizationPermissionRequest, opts ...grpc.CallOption) (*CheckOrganizationPermissionResponse, error)
+	// GetUserPermissions retrieves all permissions for a user in a given context.
+	//
+	// This method returns:
+	//   - Organization permissions (if organization_id provided)
+	//   - Team permissions (if team_id provided)
+	//   - Effective permissions (union of all applicable permissions)
 	GetUserPermissions(ctx context.Context, in *GetUserPermissionsRequest, opts ...grpc.CallOption) (*GetUserPermissionsResponse, error)
-	// Organization management
+	// GetOrganization retrieves detailed information about an organization.
+	//
+	// The response includes member and team counts for capacity planning
+	// and administrative purposes.
 	GetOrganization(ctx context.Context, in *GetOrganizationRequest, opts ...grpc.CallOption) (*GetOrganizationResponse, error)
+	// ListUserOrganizations returns all organizations a user has access to.
+	//
+	// This includes:
+	//   - Organizations where the user is a direct member
+	//   - Connected organizations accessible through cross-org permissions
 	ListUserOrganizations(ctx context.Context, in *ListUserOrganizationsRequest, opts ...grpc.CallOption) (*ListUserOrganizationsResponse, error)
+	// GetOrganizationMembers retrieves a paginated list of organization members.
+	//
+	// Results are ordered by join date (newest first) by default.
+	// Use limit and offset for pagination.
 	GetOrganizationMembers(ctx context.Context, in *GetOrganizationMembersRequest, opts ...grpc.CallOption) (*GetOrganizationMembersResponse, error)
-	// Team management
+	// GetTeamMembers retrieves all members of a specific team.
+	//
+	// The response includes each member's role within the team and basic
+	// profile information.
 	GetTeamMembers(ctx context.Context, in *GetTeamMembersRequest, opts ...grpc.CallOption) (*GetTeamMembersResponse, error)
+	// GetTeamHierarchy returns the complete team structure for an organization.
+	//
+	// The response is a tree structure with root teams and their nested
+	// child teams, useful for rendering organizational charts.
 	GetTeamHierarchy(ctx context.Context, in *GetTeamHierarchyRequest, opts ...grpc.CallOption) (*GetTeamHierarchyResponse, error)
+	// GetTeam retrieves detailed information about a specific team.
+	//
+	// The response includes the team's position in the hierarchy with
+	// parent and child team references.
 	GetTeam(ctx context.Context, in *GetTeamRequest, opts ...grpc.CallOption) (*GetTeamResponse, error)
+	// ListOrganizationTeams returns teams within an organization.
+	//
+	// Use parent_team_id to filter for teams under a specific parent,
+	// or leave empty to get all teams in the organization.
 	ListOrganizationTeams(ctx context.Context, in *ListOrganizationTeamsRequest, opts ...grpc.CallOption) (*ListOrganizationTeamsResponse, error)
-	// Access validation methods
+	// ValidateOrganizationAccess checks if a user can access an organization.
+	//
+	// Access types:
+	//   - "member": Direct membership in the organization
+	//   - "cross_org_access": Temporary cross-organization access
+	//   - "connected": Access through connected organization relationship
 	ValidateOrganizationAccess(ctx context.Context, in *ValidateOrganizationAccessRequest, opts ...grpc.CallOption) (*ValidateOrganizationAccessResponse, error)
+	// ValidateTeamAccess checks if a user can access a specific team.
+	//
+	// Access is granted if the user is a member of the team or has
+	// appropriate organization-level permissions.
 	ValidateTeamAccess(ctx context.Context, in *ValidateTeamAccessRequest, opts ...grpc.CallOption) (*ValidateTeamAccessResponse, error)
+	// GetUserAccessContext retrieves a user's complete access context.
+	//
+	// This method provides a comprehensive view of all organizations and
+	// teams a user can access, useful for authorization decisions.
 	GetUserAccessContext(ctx context.Context, in *GetUserAccessContextRequest, opts ...grpc.CallOption) (*GetUserAccessContextResponse, error)
-	// Cross-organization features
+	// ListConnectedOrganizations returns organizations connected to a given org.
+	//
+	// Connected organizations have established trust relationships enabling
+	// controlled cross-organization collaboration.
+	//
+	// Connection types: "partner", "subsidiary", "parent", "vendor"
 	ListConnectedOrganizations(ctx context.Context, in *ListConnectedOrganizationsRequest, opts ...grpc.CallOption) (*ListConnectedOrganizationsResponse, error)
+	// ListUserCrossOrganizationAccess returns a user's cross-org permissions.
+	//
+	// This includes temporary access grants to other organizations with
+	// their respective access levels and expiration times.
 	ListUserCrossOrganizationAccess(ctx context.Context, in *ListUserCrossOrganizationAccessRequest, opts ...grpc.CallOption) (*ListUserCrossOrganizationAccessResponse, error)
-	// User search and filtering
+	// SearchUsers performs a text search across users.
+	//
+	// Search includes:
+	//   - Full name (case-insensitive)
+	//   - Email address
+	//
+	// Results are ranked by relevance and limited to users the caller
+	// has permission to view.
 	SearchUsers(ctx context.Context, in *SearchUsersRequest, opts ...grpc.CallOption) (*SearchUsersResponse, error)
+	// GetUsersByOrganization retrieves all users in an organization.
+	//
+	// This method supports pagination and returns users ordered by
+	// their join date (newest first).
 	GetUsersByOrganization(ctx context.Context, in *GetUsersByOrganizationRequest, opts ...grpc.CallOption) (*GetUsersByOrganizationResponse, error)
-	// Session enrichment
+	// EnrichUserSession adds context to an authenticated user session.
+	//
+	// This method is typically called after login to populate the user's
+	// session with their available organizations, teams, and permissions.
+	//
+	// The session_context map can include custom key-value pairs for
+	// application-specific session data.
 	EnrichUserSession(ctx context.Context, in *EnrichUserSessionRequest, opts ...grpc.CallOption) (*EnrichUserSessionResponse, error)
-	// Utility methods
+	// GetOrganizationByTeam finds the organization that owns a team.
+	//
+	// This utility method is useful when you have a team ID but need
+	// the parent organization's information.
 	GetOrganizationByTeam(ctx context.Context, in *GetOrganizationByTeamRequest, opts ...grpc.CallOption) (*GetOrganizationByTeamResponse, error)
 }
 
@@ -317,41 +458,182 @@ func (c *authInternalServiceClient) GetOrganizationByTeam(ctx context.Context, i
 // All implementations must embed UnimplementedAuthInternalServiceServer
 // for forward compatibility.
 //
-// AuthInternalService provides secure, internal-only methods for other
+// AuthInternalService provides secure, internal-only RPC methods for other
 // microservices to interact with the authentication system.
+//
+// This service is designed for service-to-service communication within the
+// Sentiae platform and should NOT be exposed to external clients.
+//
+// Key features:
+// - Token validation with full organizational context
+// - User profile and permission management
+// - Organization and team hierarchy navigation
+// - Cross-organization access control
+// - Batch operations for performance optimization
+//
+// Authentication:
+// All requests must include valid service-to-service authentication headers.
+// Individual user tokens are validated through the ValidateToken RPC.
+//
+// Example usage:
+//
+//	client := auth.NewAuthInternalServiceClient(conn)
+//	resp, err := client.ValidateToken(ctx, &ValidateTokenRequest{
+//	  Token: userToken,
+//	  IncludePermissions: true,
+//	})
 type AuthInternalServiceServer interface {
-	// Enhanced token validation with full organizational context
+	// ValidateToken validates a JWT token and returns user information.
+	//
+	// This is the primary method for other services to validate user authentication.
+	// The response includes the user's organizational context and permissions.
+	//
+	// Returns:
+	//   - is_valid: false if token is expired, malformed, or revoked
+	//   - Enhanced user context if token is valid
+	//
+	// Example:
+	//
+	//	resp, _ := client.ValidateToken(ctx, &ValidateTokenRequest{
+	//	  Token: "eyJhbGc...",
+	//	  IncludePermissions: true,
+	//	})
 	ValidateToken(context.Context, *ValidateTokenRequest) (*ValidateTokenResponse, error)
-	// Enhanced user details with complete profile and organizational context
+	// GetUser retrieves detailed information about a specific user.
+	//
+	// This method provides comprehensive user data including profile information,
+	// organization memberships, team assignments, and permissions.
+	//
+	// Use cases:
+	//   - Displaying user profiles
+	//   - Access control decisions
+	//   - User administration interfaces
+	//
+	// The response can be customized using the include_* flags to optimize
+	// network bandwidth and processing time.
 	GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error)
-	// Batch user retrieval with enhanced profiles
+	// GetUsersBatch retrieves information for multiple users in a single request.
+	//
+	// This method is optimized for bulk operations and should be preferred over
+	// multiple individual GetUser calls when retrieving data for multiple users.
+	//
+	// Limitations:
+	//   - Maximum 100 user IDs per request
+	//   - Non-existent user IDs are silently ignored
+	//
+	// Performance tip: Use include_* flags judiciously to avoid over-fetching data.
 	GetUsersBatch(context.Context, *GetUsersBatchRequest) (*GetUsersBatchResponse, error)
-	// Permission checking methods
+	// CheckPermission verifies if a user has a specific permission within a team.
+	//
+	// This method checks team-level permissions based on the user's role
+	// within the specified team.
+	//
+	// Permission format: "resource:action" (e.g., "projects:write", "users:read")
 	CheckPermission(context.Context, *CheckPermissionRequest) (*CheckPermissionResponse, error)
+	// CheckOrganizationPermission verifies if a user has a specific permission
+	// at the organization level.
+	//
+	// Organization permissions typically supersede team permissions for
+	// organization-wide resources.
 	CheckOrganizationPermission(context.Context, *CheckOrganizationPermissionRequest) (*CheckOrganizationPermissionResponse, error)
+	// GetUserPermissions retrieves all permissions for a user in a given context.
+	//
+	// This method returns:
+	//   - Organization permissions (if organization_id provided)
+	//   - Team permissions (if team_id provided)
+	//   - Effective permissions (union of all applicable permissions)
 	GetUserPermissions(context.Context, *GetUserPermissionsRequest) (*GetUserPermissionsResponse, error)
-	// Organization management
+	// GetOrganization retrieves detailed information about an organization.
+	//
+	// The response includes member and team counts for capacity planning
+	// and administrative purposes.
 	GetOrganization(context.Context, *GetOrganizationRequest) (*GetOrganizationResponse, error)
+	// ListUserOrganizations returns all organizations a user has access to.
+	//
+	// This includes:
+	//   - Organizations where the user is a direct member
+	//   - Connected organizations accessible through cross-org permissions
 	ListUserOrganizations(context.Context, *ListUserOrganizationsRequest) (*ListUserOrganizationsResponse, error)
+	// GetOrganizationMembers retrieves a paginated list of organization members.
+	//
+	// Results are ordered by join date (newest first) by default.
+	// Use limit and offset for pagination.
 	GetOrganizationMembers(context.Context, *GetOrganizationMembersRequest) (*GetOrganizationMembersResponse, error)
-	// Team management
+	// GetTeamMembers retrieves all members of a specific team.
+	//
+	// The response includes each member's role within the team and basic
+	// profile information.
 	GetTeamMembers(context.Context, *GetTeamMembersRequest) (*GetTeamMembersResponse, error)
+	// GetTeamHierarchy returns the complete team structure for an organization.
+	//
+	// The response is a tree structure with root teams and their nested
+	// child teams, useful for rendering organizational charts.
 	GetTeamHierarchy(context.Context, *GetTeamHierarchyRequest) (*GetTeamHierarchyResponse, error)
+	// GetTeam retrieves detailed information about a specific team.
+	//
+	// The response includes the team's position in the hierarchy with
+	// parent and child team references.
 	GetTeam(context.Context, *GetTeamRequest) (*GetTeamResponse, error)
+	// ListOrganizationTeams returns teams within an organization.
+	//
+	// Use parent_team_id to filter for teams under a specific parent,
+	// or leave empty to get all teams in the organization.
 	ListOrganizationTeams(context.Context, *ListOrganizationTeamsRequest) (*ListOrganizationTeamsResponse, error)
-	// Access validation methods
+	// ValidateOrganizationAccess checks if a user can access an organization.
+	//
+	// Access types:
+	//   - "member": Direct membership in the organization
+	//   - "cross_org_access": Temporary cross-organization access
+	//   - "connected": Access through connected organization relationship
 	ValidateOrganizationAccess(context.Context, *ValidateOrganizationAccessRequest) (*ValidateOrganizationAccessResponse, error)
+	// ValidateTeamAccess checks if a user can access a specific team.
+	//
+	// Access is granted if the user is a member of the team or has
+	// appropriate organization-level permissions.
 	ValidateTeamAccess(context.Context, *ValidateTeamAccessRequest) (*ValidateTeamAccessResponse, error)
+	// GetUserAccessContext retrieves a user's complete access context.
+	//
+	// This method provides a comprehensive view of all organizations and
+	// teams a user can access, useful for authorization decisions.
 	GetUserAccessContext(context.Context, *GetUserAccessContextRequest) (*GetUserAccessContextResponse, error)
-	// Cross-organization features
+	// ListConnectedOrganizations returns organizations connected to a given org.
+	//
+	// Connected organizations have established trust relationships enabling
+	// controlled cross-organization collaboration.
+	//
+	// Connection types: "partner", "subsidiary", "parent", "vendor"
 	ListConnectedOrganizations(context.Context, *ListConnectedOrganizationsRequest) (*ListConnectedOrganizationsResponse, error)
+	// ListUserCrossOrganizationAccess returns a user's cross-org permissions.
+	//
+	// This includes temporary access grants to other organizations with
+	// their respective access levels and expiration times.
 	ListUserCrossOrganizationAccess(context.Context, *ListUserCrossOrganizationAccessRequest) (*ListUserCrossOrganizationAccessResponse, error)
-	// User search and filtering
+	// SearchUsers performs a text search across users.
+	//
+	// Search includes:
+	//   - Full name (case-insensitive)
+	//   - Email address
+	//
+	// Results are ranked by relevance and limited to users the caller
+	// has permission to view.
 	SearchUsers(context.Context, *SearchUsersRequest) (*SearchUsersResponse, error)
+	// GetUsersByOrganization retrieves all users in an organization.
+	//
+	// This method supports pagination and returns users ordered by
+	// their join date (newest first).
 	GetUsersByOrganization(context.Context, *GetUsersByOrganizationRequest) (*GetUsersByOrganizationResponse, error)
-	// Session enrichment
+	// EnrichUserSession adds context to an authenticated user session.
+	//
+	// This method is typically called after login to populate the user's
+	// session with their available organizations, teams, and permissions.
+	//
+	// The session_context map can include custom key-value pairs for
+	// application-specific session data.
 	EnrichUserSession(context.Context, *EnrichUserSessionRequest) (*EnrichUserSessionResponse, error)
-	// Utility methods
+	// GetOrganizationByTeam finds the organization that owns a team.
+	//
+	// This utility method is useful when you have a team ID but need
+	// the parent organization's information.
 	GetOrganizationByTeam(context.Context, *GetOrganizationByTeamRequest) (*GetOrganizationByTeamResponse, error)
 	mustEmbedUnimplementedAuthInternalServiceServer()
 }

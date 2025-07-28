@@ -72,114 +72,543 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// IdentityService provides internal methods for managing users, teams,
-// organizations, and permissions.
+// IdentityService provides comprehensive identity and access management.
+//
+// This service handles:
+// - User profile management and creation
+// - Organization and team hierarchy management
+// - Role-based access control (RBAC)
+// - Cross-organization collaboration
+// - Invitation and membership management
+// - Enterprise user bindings
+//
+// Security:
+// This service is internal-only and should not be exposed to external clients.
+// All operations require proper service-to-service authentication.
+//
+// Data Model:
+// Organizations contain Teams, which contain Users.
+// Users can belong to multiple Organizations via memberships.
+// Cross-organization access enables temporary collaboration.
+//
+// Example usage:
+//
+//	client := identity.NewIdentityServiceClient(conn)
+//	org, err := client.CreateOrganization(ctx, &CreateOrganizationRequest{
+//	  Name: "Acme Corp",
+//	  Slug: "acme-corp",
+//	  CreatedByUserId: userID,
+//	})
 type IdentityServiceClient interface {
-	// === User Management ===
-	// Retrieves a user's profile, creates them if they don't exist.
-	// Called by auth-service during registration or JIT provisioning.
+	// GetOrCreateUser retrieves an existing user or creates a new one.
+	//
+	// This method is primarily used by the auth-service during:
+	// - User registration flows
+	// - Just-in-time (JIT) user provisioning
+	// - SSO authentication with new users
+	//
+	// If the user doesn't exist, a new user profile is created with a default
+	// organization and team assignment.
+	//
+	// Returns the user ID and their default organizational context.
 	GetOrCreateUser(ctx context.Context, in *GetOrCreateUserRequest, opts ...grpc.CallOption) (*GetOrCreateUserResponse, error)
-	// Get user profile with organization context
+	// GetUser retrieves complete user profile information.
+	//
+	// The response includes the user's basic profile plus their organizational
+	// context (organizations and teams they belong to).
+	//
+	// Use cases:
+	//   - User profile pages
+	//   - Administrative user management
+	//   - Access control decisions
 	GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error)
-	// Update user profile
+	// UpdateUser modifies user profile information.
+	//
+	// Only basic profile fields can be updated via this method:
+	//   - Full name
+	//   - Avatar URL
+	//
+	// Email changes require separate verification flows.
+	// Organizational memberships are managed via separate RPCs.
 	UpdateUser(ctx context.Context, in *UpdateUserRequest, opts ...grpc.CallOption) (*UpdateUserResponse, error)
-	// === Permission Management ===
-	// Checks if a user has a specific permission within a team.
+	// CheckPermission verifies if a user has a specific permission within a team.
+	//
+	// Team permissions are typically more granular and relate to specific
+	// team resources like projects, deployments, or team management.
+	//
+	// Permission format: "resource:action" (e.g., "projects:deploy", "members:invite")
+	//
+	// The check considers:
+	//   - User's role within the team
+	//   - Organization-level permissions that may override team permissions
+	//   - Inherited permissions from parent teams (if hierarchical)
 	CheckPermission(ctx context.Context, in *CheckPermissionRequest, opts ...grpc.CallOption) (*CheckPermissionResponse, error)
-	// Checks if a user has a specific permission within an organization.
+	// CheckOrganizationPermission verifies organization-level permissions.
+	//
+	// Organization permissions typically relate to:
+	//   - Billing and subscription management
+	//   - Organization-wide settings
+	//   - Member and team management
+	//   - Security and compliance settings
+	//
+	// Organization permissions generally supersede team-level permissions.
 	CheckOrganizationPermission(ctx context.Context, in *CheckOrganizationPermissionRequest, opts ...grpc.CallOption) (*CheckOrganizationPermissionResponse, error)
-	// Get user's effective permissions in context
+	// GetUserPermissions retrieves all effective permissions for a user.
+	//
+	// This method provides a comprehensive view of what a user can do within
+	// a specific organizational and/or team context.
+	//
+	// The response includes:
+	//   - Direct organization permissions
+	//   - Direct team permissions
+	//   - Effective permissions (computed union with conflict resolution)
 	GetUserPermissions(ctx context.Context, in *GetUserPermissionsRequest, opts ...grpc.CallOption) (*GetUserPermissionsResponse, error)
-	// === Organization Management ===
-	// Create a new organization
+	// CreateOrganization creates a new organization.
+	//
+	// The creator automatically becomes the organization owner and is assigned
+	// to a default team within the organization.
+	//
+	// Organization creation includes:
+	//   - Creating the organization record
+	//   - Setting up default roles and permissions
+	//   - Creating an initial team
+	//   - Assigning the creator as owner
+	//
+	// The slug must be unique across the platform and URL-safe.
 	CreateOrganization(ctx context.Context, in *CreateOrganizationRequest, opts ...grpc.CallOption) (*CreateOrganizationResponse, error)
-	// Get organization details
+	// GetOrganization retrieves detailed organization information.
+	//
+	// The response includes basic organization data plus aggregate statistics
+	// like member count and team count for administrative purposes.
 	GetOrganization(ctx context.Context, in *GetOrganizationRequest, opts ...grpc.CallOption) (*GetOrganizationResponse, error)
-	// Update organization
+	// UpdateOrganization modifies organization settings.
+	//
+	// Updatable fields include:
+	//   - Display name
+	//   - Description
+	//   - Logo URL
+	//   - Website URL
+	//
+	// The slug cannot be changed after creation to maintain URL stability.
 	UpdateOrganization(ctx context.Context, in *UpdateOrganizationRequest, opts ...grpc.CallOption) (*UpdateOrganizationResponse, error)
-	// Delete organization
+	// DeleteOrganization permanently removes an organization.
+	//
+	// This is a destructive operation that:
+	//   - Removes all teams within the organization
+	//   - Revokes all memberships
+	//   - Cancels all pending invitations
+	//   - Removes organization connections
+	//
+	// Prerequisites:
+	//   - Caller must be organization owner
+	//   - Organization must not have active external integrations
 	DeleteOrganization(ctx context.Context, in *DeleteOrganizationRequest, opts ...grpc.CallOption) (*DeleteOrganizationResponse, error)
-	// List organizations user has access to
+	// ListUserOrganizations returns all organizations a user can access.
+	//
+	// The response includes:
+	//   - Organizations where user is a direct member
+	//   - Connected organizations accessible via organization relationships
+	//
+	// Results are ordered by the user's access level (owner > admin > member).
 	ListUserOrganizations(ctx context.Context, in *ListUserOrganizationsRequest, opts ...grpc.CallOption) (*ListUserOrganizationsResponse, error)
-	// Get organization members
+	// GetOrganizationMembers retrieves all members of an organization.
+	//
+	// The response includes each member's:
+	//   - Basic profile information
+	//   - Organization role
+	//   - Join date
+	//
+	// Results are ordered by join date (newest first).
 	GetOrganizationMembers(ctx context.Context, in *GetOrganizationMembersRequest, opts ...grpc.CallOption) (*GetOrganizationMembersResponse, error)
-	// === Team Management ===
-	// Gets a list of team members and their roles from this service's database.
+	// GetTeamMembers retrieves all members of a specific team.
+	//
+	// The response includes each member's:
+	//   - Basic profile information (name, avatar)
+	//   - Role within the team
+	//   - Team join date
+	//
+	// Members are ordered by their role hierarchy (lead > member > observer).
 	GetTeamMembers(ctx context.Context, in *GetTeamMembersRequest, opts ...grpc.CallOption) (*GetTeamMembersResponse, error)
-	// Create team within organization
+	// CreateTeam creates a new team within an organization.
+	//
+	// Teams can be:
+	//   - Root-level teams (no parent)
+	//   - Child teams under existing teams (hierarchical)
+	//
+	// Team creation automatically:
+	//   - Assigns the creator as team lead
+	//   - Sets up default team roles
+	//   - Calculates hierarchy depth and path
+	//
+	// Team names must be unique within their parent scope.
 	CreateTeam(ctx context.Context, in *CreateTeamRequest, opts ...grpc.CallOption) (*CreateTeamResponse, error)
-	// Get team details with hierarchy
+	// GetTeam retrieves detailed information about a team.
+	//
+	// The response includes:
+	//   - Team basic information
+	//   - Parent organization details
+	//   - Parent team (if hierarchical)
+	//   - Direct child teams
+	//
+	// This provides complete context for understanding team relationships.
 	GetTeam(ctx context.Context, in *GetTeamRequest, opts ...grpc.CallOption) (*GetTeamResponse, error)
-	// Update team
+	// UpdateTeam modifies team settings.
+	//
+	// Updatable fields:
+	//   - Team name (must remain unique in scope)
+	//   - Parent team (for reorganization)
+	//
+	// Changing parent team triggers hierarchy recalculation for all descendants.
 	UpdateTeam(ctx context.Context, in *UpdateTeamRequest, opts ...grpc.CallOption) (*UpdateTeamResponse, error)
-	// Delete team
+	// DeleteTeam permanently removes a team.
+	//
+	// Prerequisites:
+	//   - Team must not have child teams
+	//   - All team members must be removed first
+	//   - Caller must have team admin permissions
+	//
+	// This operation:
+	//   - Removes the team record
+	//   - Cancels pending team invitations
+	//   - Archives team-specific audit logs
 	DeleteTeam(ctx context.Context, in *DeleteTeamRequest, opts ...grpc.CallOption) (*DeleteTeamResponse, error)
-	// List teams in organization
+	// ListOrganizationTeams returns teams within an organization.
+	//
+	// Filtering options:
+	//   - All teams (if no parent_team_id specified)
+	//   - Teams under a specific parent (if parent_team_id provided)
+	//
+	// Results are ordered by creation date (oldest first) to reflect
+	// organizational growth patterns.
 	ListOrganizationTeams(ctx context.Context, in *ListOrganizationTeamsRequest, opts ...grpc.CallOption) (*ListOrganizationTeamsResponse, error)
-	// Get team hierarchy
+	// GetTeamHierarchy returns the complete team structure for an organization.
+	//
+	// The response is a tree structure showing:
+	//   - Root teams at the top level
+	//   - Nested child teams under their parents
+	//   - Full hierarchy depth and relationships
+	//
+	// This is useful for:
+	//   - Organizational charts
+	//   - Permission inheritance calculations
+	//   - Team navigation interfaces
 	GetTeamHierarchy(ctx context.Context, in *GetTeamHierarchyRequest, opts ...grpc.CallOption) (*GetTeamHierarchyResponse, error)
-	// === Role Management ===
-	// Create organization role
+	// CreateOrganizationRole creates a custom role within an organization.
+	//
+	// Custom roles allow organizations to define specific permission sets
+	// beyond the default system roles (Owner, Admin, Member).
+	//
+	// Role creation includes:
+	//   - Validating permission strings against known permissions
+	//   - Ensuring role names are unique within the organization
+	//   - Setting up audit logging for role usage
+	//
+	// Permission format: "resource:action" (e.g., "billing:view", "teams:create")
 	CreateOrganizationRole(ctx context.Context, in *CreateOrganizationRoleRequest, opts ...grpc.CallOption) (*CreateOrganizationRoleResponse, error)
-	// Get organization roles
+	// ListOrganizationRoles returns all roles available in an organization.
+	//
+	// The response includes:
+	//   - System-defined roles (Owner, Admin, Member)
+	//   - Custom organization-specific roles
+	//
+	// Roles are ordered by their privilege level (most privileged first).
 	ListOrganizationRoles(ctx context.Context, in *ListOrganizationRolesRequest, opts ...grpc.CallOption) (*ListOrganizationRolesResponse, error)
-	// Update organization role
+	// UpdateOrganizationRole modifies an existing organization role.
+	//
+	// Updatable fields:
+	//   - Role name (must remain unique)
+	//   - Permission list
+	//
+	// Limitations:
+	//   - System roles (Owner, Admin, Member) cannot be modified
+	//   - Permission changes affect all users with this role immediately
+	//   - Cannot remove permissions if it would leave users without critical access
 	UpdateOrganizationRole(ctx context.Context, in *UpdateOrganizationRoleRequest, opts ...grpc.CallOption) (*UpdateOrganizationRoleResponse, error)
-	// Delete organization role
+	// DeleteOrganizationRole removes a custom organization role.
+	//
+	// Prerequisites:
+	//   - Role must not be a system role
+	//   - No users can be assigned this role
+	//   - No pending invitations can reference this role
+	//
+	// Users previously assigned to this role are automatically reassigned
+	// to the default "Member" role.
 	DeleteOrganizationRole(ctx context.Context, in *DeleteOrganizationRoleRequest, opts ...grpc.CallOption) (*DeleteOrganizationRoleResponse, error)
-	// === Membership Management ===
-	// Add user to organization
+	// AddOrganizationMember adds a user to an organization.
+	//
+	// This operation:
+	//   - Creates an organization membership record
+	//   - Assigns the specified role to the user
+	//   - Adds the user to the organization's default team (if applicable)
+	//   - Sends welcome notifications
+	//
+	// Prerequisites:
+	//   - User must exist in the system
+	//   - Caller must have member management permissions
+	//   - User must not already be a member
 	AddOrganizationMember(ctx context.Context, in *AddOrganizationMemberRequest, opts ...grpc.CallOption) (*AddOrganizationMemberResponse, error)
-	// Remove user from organization
+	// RemoveOrganizationMember removes a user from an organization.
+	//
+	// This operation:
+	//   - Removes the user from all teams within the organization
+	//   - Revokes all organization-specific permissions
+	//   - Cancels any pending invitations
+	//   - Archives the user's organization activity
+	//
+	// Special cases:
+	//   - Organization owners cannot be removed (must transfer ownership first)
+	//   - Last admin cannot be removed (must assign another admin first)
 	RemoveOrganizationMember(ctx context.Context, in *RemoveOrganizationMemberRequest, opts ...grpc.CallOption) (*RemoveOrganizationMemberResponse, error)
-	// Update user's organization role
+	// UpdateOrganizationMemberRole changes a user's role within an organization.
+	//
+	// Role changes:
+	//   - Take effect immediately
+	//   - May require additional security confirmations for privilege escalation
+	//   - Are logged for audit purposes
+	//
+	// Restrictions:
+	//   - Cannot demote the last organization owner
+	//   - Self-role changes may be restricted by organization policy
 	UpdateOrganizationMemberRole(ctx context.Context, in *UpdateOrganizationMemberRoleRequest, opts ...grpc.CallOption) (*UpdateOrganizationMemberRoleResponse, error)
-	// Add user to team
+	// AddTeamMember adds a user to a team.
+	//
+	// Prerequisites:
+	//   - User must be a member of the team's organization
+	//   - Caller must have team management permissions
+	//   - Team must not have reached member limits (if configured)
+	//
+	// The user is assigned the specified role within the team context.
 	AddTeamMember(ctx context.Context, in *AddTeamMemberRequest, opts ...grpc.CallOption) (*AddTeamMemberResponse, error)
-	// Remove user from team
+	// RemoveTeamMember removes a user from a team.
+	//
+	// This operation:
+	//   - Removes team-specific permissions
+	//   - May trigger resource access reviews
+	//   - Preserves the user's organization membership
+	//
+	// Special cases:
+	//   - Team leads may require replacement before removal
+	//   - Users may be automatically removed from child teams
 	RemoveTeamMember(ctx context.Context, in *RemoveTeamMemberRequest, opts ...grpc.CallOption) (*RemoveTeamMemberResponse, error)
-	// Update user's team role
+	// UpdateTeamMemberRole changes a user's role within a team.
+	//
+	// Team role changes are generally less restricted than organization roles
+	// but still require appropriate permissions from the caller.
+	//
+	// The change affects only the user's permissions within this specific team.
 	UpdateTeamMemberRole(ctx context.Context, in *UpdateTeamMemberRoleRequest, opts ...grpc.CallOption) (*UpdateTeamMemberRoleResponse, error)
-	// === Organization Connections ===
-	// Create connection between organizations
+	// CreateOrganizationConnection establishes a relationship between organizations.
+	//
+	// Connection types include:
+	//   - "partner": Business partnership for collaboration
+	//   - "subsidiary": Parent-child corporate relationship
+	//   - "vendor": Service provider relationship
+	//   - "customer": Client relationship
+	//
+	// Connections enable:
+	//   - Cross-organization visibility (with permission)
+	//   - Simplified user access grants
+	//   - Shared resource collaboration
+	//   - Unified billing (for certain connection types)
+	//
+	// Both organizations must approve the connection before it becomes active.
 	CreateOrganizationConnection(ctx context.Context, in *CreateOrganizationConnectionRequest, opts ...grpc.CallOption) (*CreateOrganizationConnectionResponse, error)
-	// List connected organizations
+	// ListConnectedOrganizations returns all organizations connected to a given org.
+	//
+	// The response includes:
+	//   - Connection type and status
+	//   - Direction of the connection (is_source indicates if this org initiated it)
+	//   - Creation date for audit purposes
+	//
+	// Results are grouped by connection type and ordered by creation date.
 	ListConnectedOrganizations(ctx context.Context, in *ListConnectedOrganizationsRequest, opts ...grpc.CallOption) (*ListConnectedOrganizationsResponse, error)
-	// Update organization connection
+	// UpdateOrganizationConnection modifies an existing connection.
+	//
+	// Updatable fields:
+	//   - Connection type (with mutual agreement)
+	//   - Status (active, inactive, pending)
+	//
+	// Status changes:
+	//   - "pending" → "active": Requires approval from both organizations
+	//   - "active" → "inactive": Can be done unilaterally, revokes access
+	//   - "inactive" → "active": Requires re-approval process
 	UpdateOrganizationConnection(ctx context.Context, in *UpdateOrganizationConnectionRequest, opts ...grpc.CallOption) (*UpdateOrganizationConnectionResponse, error)
-	// Delete organization connection
+	// DeleteOrganizationConnection permanently removes a connection.
+	//
+	// This operation:
+	//   - Removes the connection record
+	//   - Revokes all cross-organization access grants
+	//   - Notifies both organizations
+	//   - Archives connection history for audit
+	//
+	// Either organization can delete a connection unilaterally.
 	DeleteOrganizationConnection(ctx context.Context, in *DeleteOrganizationConnectionRequest, opts ...grpc.CallOption) (*DeleteOrganizationConnectionResponse, error)
-	// === Cross-Organization Access ===
-	// Grant cross-organization access
+	// GrantCrossOrganizationAccess provides temporary access to another organization.
+	//
+	// This enables users from one organization to collaborate with another
+	// without permanent membership transfer.
+	//
+	// Access levels:
+	//   - "guest": Read-only access to specified resources
+	//   - "member": Standard collaboration permissions
+	//   - "admin": Elevated permissions for project management
+	//
+	// Prerequisites:
+	//   - Organizations must be connected or have an active partnership
+	//   - Granting user must have admin permissions in target organization
+	//   - Target organization policies must allow cross-org access
+	//
+	// Access can be time-limited with automatic expiration.
 	GrantCrossOrganizationAccess(ctx context.Context, in *GrantCrossOrganizationAccessRequest, opts ...grpc.CallOption) (*GrantCrossOrganizationAccessResponse, error)
-	// Revoke cross-organization access
+	// RevokeCrossOrganizationAccess removes cross-organization access.
+	//
+	// Revocation:
+	//   - Takes effect immediately
+	//   - Removes access to all resources in the target organization
+	//   - Logs the revocation for audit purposes
+	//   - Notifies the affected user
+	//
+	// Either the granting organization or the user's home organization
+	// can revoke access.
 	RevokeCrossOrganizationAccess(ctx context.Context, in *RevokeCrossOrganizationAccessRequest, opts ...grpc.CallOption) (*RevokeCrossOrganizationAccessResponse, error)
-	// List user's cross-organization access
+	// ListUserCrossOrganizationAccess returns all cross-org access for a user.
+	//
+	// The response includes:
+	//   - Target organizations and access levels
+	//   - Expiration dates (if applicable)
+	//   - Who granted the access
+	//   - Current status (active, expired, revoked)
+	//
+	// This helps users understand their collaboration permissions and
+	// administrators audit cross-organization relationships.
 	ListUserCrossOrganizationAccess(ctx context.Context, in *ListUserCrossOrganizationAccessRequest, opts ...grpc.CallOption) (*ListUserCrossOrganizationAccessResponse, error)
-	// === Invitation Management ===
-	// Create invitation (team, organization, or cross-organization)
+	// CreateInvitation creates an invitation for various types of access.
+	//
+	// Invitation types:
+	//   - "organization": Invite to join an organization
+	//   - "team": Invite to join a specific team
+	//   - "cross_organization": Invite for cross-org collaboration
+	//
+	// Features:
+	//   - Email-based invitations with secure tokens
+	//   - Optional account creation for new users
+	//   - Configurable expiration (default: 7 days)
+	//   - Role assignment upon acceptance
+	//
+	// The invitation email includes context about the organization/team
+	// and the permissions being granted.
 	CreateInvitation(ctx context.Context, in *CreateInvitationRequest, opts ...grpc.CallOption) (*CreateInvitationResponse, error)
-	// Accept invitation with optional account creation
+	// AcceptInvitation processes an invitation acceptance.
+	//
+	// This method handles:
+	//   - Validating the invitation token and expiration
+	//   - Creating user account (if requested and user doesn't exist)
+	//   - Adding user to organization/team with specified role
+	//   - Sending welcome notifications
+	//
+	// For new account creation:
+	//   - User provides password during acceptance
+	//   - Account is created with email from invitation
+	//   - User is immediately added to the target organization/team
 	AcceptInvitation(ctx context.Context, in *AcceptInvitationRequest, opts ...grpc.CallOption) (*AcceptInvitationResponse, error)
-	// List invitations
+	// ListInvitations retrieves invitations based on filter criteria.
+	//
+	// Filtering options:
+	//   - By organization (all invitations for an org)
+	//   - By team (team-specific invitations)
+	//   - By email (invitations for a specific email address)
+	//   - By status (pending, accepted, expired, cancelled)
+	//
+	// Results include invitation details and current status.
 	ListInvitations(ctx context.Context, in *ListInvitationsRequest, opts ...grpc.CallOption) (*ListInvitationsResponse, error)
-	// Cancel invitation
+	// CancelInvitation revokes a pending invitation.
+	//
+	// Cancellation:
+	//   - Invalidates the invitation token
+	//   - Prevents future acceptance
+	//   - Logs the cancellation for audit
+	//   - Optionally notifies the invitee
+	//
+	// Only pending invitations can be cancelled. Accepted invitations
+	// require membership removal instead.
 	CancelInvitation(ctx context.Context, in *CancelInvitationRequest, opts ...grpc.CallOption) (*CancelInvitationResponse, error)
-	// === Enterprise User Management ===
-	// Bind user to organization (enterprise users)
+	// BindUserToOrganization creates special enterprise user relationships.
+	//
+	// Enterprise bindings enable:
+	//   - Cross-organization user management
+	//   - Centralized access control
+	//   - Automatic organization access based on user attributes
+	//   - Simplified user provisioning for large enterprises
+	//
+	// Binding types:
+	//   - "primary": User's main organizational affiliation
+	//   - "secondary": Additional organizational access
+	//   - "contractor": Temporary engagement with specific scope
+	//
+	// Enterprise users may have special privileges like automatic access
+	// to connected organizations.
 	BindUserToOrganization(ctx context.Context, in *BindUserToOrganizationRequest, opts ...grpc.CallOption) (*BindUserToOrganizationResponse, error)
-	// Get user's access context
+	// GetUserAccessContext provides comprehensive access information.
+	//
+	// This method returns:
+	//   - Primary organization affiliation
+	//   - All accessible organizations (direct + connected)
+	//   - All accessible teams across organizations
+	//   - Enterprise user status and special privileges
+	//
+	// This is used for:
+	//   - Session establishment
+	//   - Access control decisions
+	//   - UI personalization (showing available organizations/teams)
 	GetUserAccessContext(ctx context.Context, in *GetUserAccessContextRequest, opts ...grpc.CallOption) (*GetUserAccessContextResponse, error)
-	// Check if user can join organization
+	// CanUserJoinOrganization checks if a user is eligible to join an organization.
+	//
+	// This method considers:
+	//   - Organization invitation policies
+	//   - Email domain restrictions
+	//   - Enterprise user bindings
+	//   - Existing memberships and conflicts
+	//   - Organization capacity limits
+	//
+	// The response includes the eligibility decision and reasoning,
+	// which can be used to provide user-friendly error messages.
 	CanUserJoinOrganization(ctx context.Context, in *CanUserJoinOrganizationRequest, opts ...grpc.CallOption) (*CanUserJoinOrganizationResponse, error)
-	// === Utility Methods ===
-	// Validate organization exists and user has access
+	// ValidateOrganizationAccess verifies user access to an organization.
+	//
+	// This method checks:
+	//   - Direct organization membership
+	//   - Cross-organization access grants
+	//   - Enterprise user bindings
+	//   - Connected organization relationships
+	//
+	// Returns the access type and whether access is currently valid.
+	// Used for authorization checks throughout the system.
 	ValidateOrganizationAccess(ctx context.Context, in *ValidateOrganizationAccessRequest, opts ...grpc.CallOption) (*ValidateOrganizationAccessResponse, error)
-	// Validate team exists and user has access
+	// ValidateTeamAccess verifies user access to a specific team.
+	//
+	// This method checks:
+	//   - Direct team membership
+	//   - Organization-level permissions that grant team access
+	//   - Inherited access from parent teams (if hierarchical)
+	//
+	// Returns access status and the organization context for the team.
 	ValidateTeamAccess(ctx context.Context, in *ValidateTeamAccessRequest, opts ...grpc.CallOption) (*ValidateTeamAccessResponse, error)
-	// Get organization by team ID
+	// GetOrganizationByTeam retrieves the organization that owns a team.
+	//
+	// This utility method is helpful when you have a team ID but need
+	// to determine the organizational context for permission checks
+	// or navigation purposes.
 	GetOrganizationByTeam(ctx context.Context, in *GetOrganizationByTeamRequest, opts ...grpc.CallOption) (*GetOrganizationByTeamResponse, error)
-	// Cleanup expired invitations and access
+	// CleanupExpiredData removes expired invitations and access grants.
+	//
+	// This maintenance operation:
+	//   - Removes invitations past their expiration date
+	//   - Revokes expired cross-organization access
+	//   - Archives historical data for compliance
+	//   - Updates related audit logs
+	//
+	// Typically called by scheduled background jobs to maintain
+	// data hygiene and security.
 	CleanupExpiredData(ctx context.Context, in *CleanupExpiredDataRequest, opts ...grpc.CallOption) (*CleanupExpiredDataResponse, error)
 }
 
@@ -665,114 +1094,543 @@ func (c *identityServiceClient) CleanupExpiredData(ctx context.Context, in *Clea
 // All implementations must embed UnimplementedIdentityServiceServer
 // for forward compatibility.
 //
-// IdentityService provides internal methods for managing users, teams,
-// organizations, and permissions.
+// IdentityService provides comprehensive identity and access management.
+//
+// This service handles:
+// - User profile management and creation
+// - Organization and team hierarchy management
+// - Role-based access control (RBAC)
+// - Cross-organization collaboration
+// - Invitation and membership management
+// - Enterprise user bindings
+//
+// Security:
+// This service is internal-only and should not be exposed to external clients.
+// All operations require proper service-to-service authentication.
+//
+// Data Model:
+// Organizations contain Teams, which contain Users.
+// Users can belong to multiple Organizations via memberships.
+// Cross-organization access enables temporary collaboration.
+//
+// Example usage:
+//
+//	client := identity.NewIdentityServiceClient(conn)
+//	org, err := client.CreateOrganization(ctx, &CreateOrganizationRequest{
+//	  Name: "Acme Corp",
+//	  Slug: "acme-corp",
+//	  CreatedByUserId: userID,
+//	})
 type IdentityServiceServer interface {
-	// === User Management ===
-	// Retrieves a user's profile, creates them if they don't exist.
-	// Called by auth-service during registration or JIT provisioning.
+	// GetOrCreateUser retrieves an existing user or creates a new one.
+	//
+	// This method is primarily used by the auth-service during:
+	// - User registration flows
+	// - Just-in-time (JIT) user provisioning
+	// - SSO authentication with new users
+	//
+	// If the user doesn't exist, a new user profile is created with a default
+	// organization and team assignment.
+	//
+	// Returns the user ID and their default organizational context.
 	GetOrCreateUser(context.Context, *GetOrCreateUserRequest) (*GetOrCreateUserResponse, error)
-	// Get user profile with organization context
+	// GetUser retrieves complete user profile information.
+	//
+	// The response includes the user's basic profile plus their organizational
+	// context (organizations and teams they belong to).
+	//
+	// Use cases:
+	//   - User profile pages
+	//   - Administrative user management
+	//   - Access control decisions
 	GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error)
-	// Update user profile
+	// UpdateUser modifies user profile information.
+	//
+	// Only basic profile fields can be updated via this method:
+	//   - Full name
+	//   - Avatar URL
+	//
+	// Email changes require separate verification flows.
+	// Organizational memberships are managed via separate RPCs.
 	UpdateUser(context.Context, *UpdateUserRequest) (*UpdateUserResponse, error)
-	// === Permission Management ===
-	// Checks if a user has a specific permission within a team.
+	// CheckPermission verifies if a user has a specific permission within a team.
+	//
+	// Team permissions are typically more granular and relate to specific
+	// team resources like projects, deployments, or team management.
+	//
+	// Permission format: "resource:action" (e.g., "projects:deploy", "members:invite")
+	//
+	// The check considers:
+	//   - User's role within the team
+	//   - Organization-level permissions that may override team permissions
+	//   - Inherited permissions from parent teams (if hierarchical)
 	CheckPermission(context.Context, *CheckPermissionRequest) (*CheckPermissionResponse, error)
-	// Checks if a user has a specific permission within an organization.
+	// CheckOrganizationPermission verifies organization-level permissions.
+	//
+	// Organization permissions typically relate to:
+	//   - Billing and subscription management
+	//   - Organization-wide settings
+	//   - Member and team management
+	//   - Security and compliance settings
+	//
+	// Organization permissions generally supersede team-level permissions.
 	CheckOrganizationPermission(context.Context, *CheckOrganizationPermissionRequest) (*CheckOrganizationPermissionResponse, error)
-	// Get user's effective permissions in context
+	// GetUserPermissions retrieves all effective permissions for a user.
+	//
+	// This method provides a comprehensive view of what a user can do within
+	// a specific organizational and/or team context.
+	//
+	// The response includes:
+	//   - Direct organization permissions
+	//   - Direct team permissions
+	//   - Effective permissions (computed union with conflict resolution)
 	GetUserPermissions(context.Context, *GetUserPermissionsRequest) (*GetUserPermissionsResponse, error)
-	// === Organization Management ===
-	// Create a new organization
+	// CreateOrganization creates a new organization.
+	//
+	// The creator automatically becomes the organization owner and is assigned
+	// to a default team within the organization.
+	//
+	// Organization creation includes:
+	//   - Creating the organization record
+	//   - Setting up default roles and permissions
+	//   - Creating an initial team
+	//   - Assigning the creator as owner
+	//
+	// The slug must be unique across the platform and URL-safe.
 	CreateOrganization(context.Context, *CreateOrganizationRequest) (*CreateOrganizationResponse, error)
-	// Get organization details
+	// GetOrganization retrieves detailed organization information.
+	//
+	// The response includes basic organization data plus aggregate statistics
+	// like member count and team count for administrative purposes.
 	GetOrganization(context.Context, *GetOrganizationRequest) (*GetOrganizationResponse, error)
-	// Update organization
+	// UpdateOrganization modifies organization settings.
+	//
+	// Updatable fields include:
+	//   - Display name
+	//   - Description
+	//   - Logo URL
+	//   - Website URL
+	//
+	// The slug cannot be changed after creation to maintain URL stability.
 	UpdateOrganization(context.Context, *UpdateOrganizationRequest) (*UpdateOrganizationResponse, error)
-	// Delete organization
+	// DeleteOrganization permanently removes an organization.
+	//
+	// This is a destructive operation that:
+	//   - Removes all teams within the organization
+	//   - Revokes all memberships
+	//   - Cancels all pending invitations
+	//   - Removes organization connections
+	//
+	// Prerequisites:
+	//   - Caller must be organization owner
+	//   - Organization must not have active external integrations
 	DeleteOrganization(context.Context, *DeleteOrganizationRequest) (*DeleteOrganizationResponse, error)
-	// List organizations user has access to
+	// ListUserOrganizations returns all organizations a user can access.
+	//
+	// The response includes:
+	//   - Organizations where user is a direct member
+	//   - Connected organizations accessible via organization relationships
+	//
+	// Results are ordered by the user's access level (owner > admin > member).
 	ListUserOrganizations(context.Context, *ListUserOrganizationsRequest) (*ListUserOrganizationsResponse, error)
-	// Get organization members
+	// GetOrganizationMembers retrieves all members of an organization.
+	//
+	// The response includes each member's:
+	//   - Basic profile information
+	//   - Organization role
+	//   - Join date
+	//
+	// Results are ordered by join date (newest first).
 	GetOrganizationMembers(context.Context, *GetOrganizationMembersRequest) (*GetOrganizationMembersResponse, error)
-	// === Team Management ===
-	// Gets a list of team members and their roles from this service's database.
+	// GetTeamMembers retrieves all members of a specific team.
+	//
+	// The response includes each member's:
+	//   - Basic profile information (name, avatar)
+	//   - Role within the team
+	//   - Team join date
+	//
+	// Members are ordered by their role hierarchy (lead > member > observer).
 	GetTeamMembers(context.Context, *GetTeamMembersRequest) (*GetTeamMembersResponse, error)
-	// Create team within organization
+	// CreateTeam creates a new team within an organization.
+	//
+	// Teams can be:
+	//   - Root-level teams (no parent)
+	//   - Child teams under existing teams (hierarchical)
+	//
+	// Team creation automatically:
+	//   - Assigns the creator as team lead
+	//   - Sets up default team roles
+	//   - Calculates hierarchy depth and path
+	//
+	// Team names must be unique within their parent scope.
 	CreateTeam(context.Context, *CreateTeamRequest) (*CreateTeamResponse, error)
-	// Get team details with hierarchy
+	// GetTeam retrieves detailed information about a team.
+	//
+	// The response includes:
+	//   - Team basic information
+	//   - Parent organization details
+	//   - Parent team (if hierarchical)
+	//   - Direct child teams
+	//
+	// This provides complete context for understanding team relationships.
 	GetTeam(context.Context, *GetTeamRequest) (*GetTeamResponse, error)
-	// Update team
+	// UpdateTeam modifies team settings.
+	//
+	// Updatable fields:
+	//   - Team name (must remain unique in scope)
+	//   - Parent team (for reorganization)
+	//
+	// Changing parent team triggers hierarchy recalculation for all descendants.
 	UpdateTeam(context.Context, *UpdateTeamRequest) (*UpdateTeamResponse, error)
-	// Delete team
+	// DeleteTeam permanently removes a team.
+	//
+	// Prerequisites:
+	//   - Team must not have child teams
+	//   - All team members must be removed first
+	//   - Caller must have team admin permissions
+	//
+	// This operation:
+	//   - Removes the team record
+	//   - Cancels pending team invitations
+	//   - Archives team-specific audit logs
 	DeleteTeam(context.Context, *DeleteTeamRequest) (*DeleteTeamResponse, error)
-	// List teams in organization
+	// ListOrganizationTeams returns teams within an organization.
+	//
+	// Filtering options:
+	//   - All teams (if no parent_team_id specified)
+	//   - Teams under a specific parent (if parent_team_id provided)
+	//
+	// Results are ordered by creation date (oldest first) to reflect
+	// organizational growth patterns.
 	ListOrganizationTeams(context.Context, *ListOrganizationTeamsRequest) (*ListOrganizationTeamsResponse, error)
-	// Get team hierarchy
+	// GetTeamHierarchy returns the complete team structure for an organization.
+	//
+	// The response is a tree structure showing:
+	//   - Root teams at the top level
+	//   - Nested child teams under their parents
+	//   - Full hierarchy depth and relationships
+	//
+	// This is useful for:
+	//   - Organizational charts
+	//   - Permission inheritance calculations
+	//   - Team navigation interfaces
 	GetTeamHierarchy(context.Context, *GetTeamHierarchyRequest) (*GetTeamHierarchyResponse, error)
-	// === Role Management ===
-	// Create organization role
+	// CreateOrganizationRole creates a custom role within an organization.
+	//
+	// Custom roles allow organizations to define specific permission sets
+	// beyond the default system roles (Owner, Admin, Member).
+	//
+	// Role creation includes:
+	//   - Validating permission strings against known permissions
+	//   - Ensuring role names are unique within the organization
+	//   - Setting up audit logging for role usage
+	//
+	// Permission format: "resource:action" (e.g., "billing:view", "teams:create")
 	CreateOrganizationRole(context.Context, *CreateOrganizationRoleRequest) (*CreateOrganizationRoleResponse, error)
-	// Get organization roles
+	// ListOrganizationRoles returns all roles available in an organization.
+	//
+	// The response includes:
+	//   - System-defined roles (Owner, Admin, Member)
+	//   - Custom organization-specific roles
+	//
+	// Roles are ordered by their privilege level (most privileged first).
 	ListOrganizationRoles(context.Context, *ListOrganizationRolesRequest) (*ListOrganizationRolesResponse, error)
-	// Update organization role
+	// UpdateOrganizationRole modifies an existing organization role.
+	//
+	// Updatable fields:
+	//   - Role name (must remain unique)
+	//   - Permission list
+	//
+	// Limitations:
+	//   - System roles (Owner, Admin, Member) cannot be modified
+	//   - Permission changes affect all users with this role immediately
+	//   - Cannot remove permissions if it would leave users without critical access
 	UpdateOrganizationRole(context.Context, *UpdateOrganizationRoleRequest) (*UpdateOrganizationRoleResponse, error)
-	// Delete organization role
+	// DeleteOrganizationRole removes a custom organization role.
+	//
+	// Prerequisites:
+	//   - Role must not be a system role
+	//   - No users can be assigned this role
+	//   - No pending invitations can reference this role
+	//
+	// Users previously assigned to this role are automatically reassigned
+	// to the default "Member" role.
 	DeleteOrganizationRole(context.Context, *DeleteOrganizationRoleRequest) (*DeleteOrganizationRoleResponse, error)
-	// === Membership Management ===
-	// Add user to organization
+	// AddOrganizationMember adds a user to an organization.
+	//
+	// This operation:
+	//   - Creates an organization membership record
+	//   - Assigns the specified role to the user
+	//   - Adds the user to the organization's default team (if applicable)
+	//   - Sends welcome notifications
+	//
+	// Prerequisites:
+	//   - User must exist in the system
+	//   - Caller must have member management permissions
+	//   - User must not already be a member
 	AddOrganizationMember(context.Context, *AddOrganizationMemberRequest) (*AddOrganizationMemberResponse, error)
-	// Remove user from organization
+	// RemoveOrganizationMember removes a user from an organization.
+	//
+	// This operation:
+	//   - Removes the user from all teams within the organization
+	//   - Revokes all organization-specific permissions
+	//   - Cancels any pending invitations
+	//   - Archives the user's organization activity
+	//
+	// Special cases:
+	//   - Organization owners cannot be removed (must transfer ownership first)
+	//   - Last admin cannot be removed (must assign another admin first)
 	RemoveOrganizationMember(context.Context, *RemoveOrganizationMemberRequest) (*RemoveOrganizationMemberResponse, error)
-	// Update user's organization role
+	// UpdateOrganizationMemberRole changes a user's role within an organization.
+	//
+	// Role changes:
+	//   - Take effect immediately
+	//   - May require additional security confirmations for privilege escalation
+	//   - Are logged for audit purposes
+	//
+	// Restrictions:
+	//   - Cannot demote the last organization owner
+	//   - Self-role changes may be restricted by organization policy
 	UpdateOrganizationMemberRole(context.Context, *UpdateOrganizationMemberRoleRequest) (*UpdateOrganizationMemberRoleResponse, error)
-	// Add user to team
+	// AddTeamMember adds a user to a team.
+	//
+	// Prerequisites:
+	//   - User must be a member of the team's organization
+	//   - Caller must have team management permissions
+	//   - Team must not have reached member limits (if configured)
+	//
+	// The user is assigned the specified role within the team context.
 	AddTeamMember(context.Context, *AddTeamMemberRequest) (*AddTeamMemberResponse, error)
-	// Remove user from team
+	// RemoveTeamMember removes a user from a team.
+	//
+	// This operation:
+	//   - Removes team-specific permissions
+	//   - May trigger resource access reviews
+	//   - Preserves the user's organization membership
+	//
+	// Special cases:
+	//   - Team leads may require replacement before removal
+	//   - Users may be automatically removed from child teams
 	RemoveTeamMember(context.Context, *RemoveTeamMemberRequest) (*RemoveTeamMemberResponse, error)
-	// Update user's team role
+	// UpdateTeamMemberRole changes a user's role within a team.
+	//
+	// Team role changes are generally less restricted than organization roles
+	// but still require appropriate permissions from the caller.
+	//
+	// The change affects only the user's permissions within this specific team.
 	UpdateTeamMemberRole(context.Context, *UpdateTeamMemberRoleRequest) (*UpdateTeamMemberRoleResponse, error)
-	// === Organization Connections ===
-	// Create connection between organizations
+	// CreateOrganizationConnection establishes a relationship between organizations.
+	//
+	// Connection types include:
+	//   - "partner": Business partnership for collaboration
+	//   - "subsidiary": Parent-child corporate relationship
+	//   - "vendor": Service provider relationship
+	//   - "customer": Client relationship
+	//
+	// Connections enable:
+	//   - Cross-organization visibility (with permission)
+	//   - Simplified user access grants
+	//   - Shared resource collaboration
+	//   - Unified billing (for certain connection types)
+	//
+	// Both organizations must approve the connection before it becomes active.
 	CreateOrganizationConnection(context.Context, *CreateOrganizationConnectionRequest) (*CreateOrganizationConnectionResponse, error)
-	// List connected organizations
+	// ListConnectedOrganizations returns all organizations connected to a given org.
+	//
+	// The response includes:
+	//   - Connection type and status
+	//   - Direction of the connection (is_source indicates if this org initiated it)
+	//   - Creation date for audit purposes
+	//
+	// Results are grouped by connection type and ordered by creation date.
 	ListConnectedOrganizations(context.Context, *ListConnectedOrganizationsRequest) (*ListConnectedOrganizationsResponse, error)
-	// Update organization connection
+	// UpdateOrganizationConnection modifies an existing connection.
+	//
+	// Updatable fields:
+	//   - Connection type (with mutual agreement)
+	//   - Status (active, inactive, pending)
+	//
+	// Status changes:
+	//   - "pending" → "active": Requires approval from both organizations
+	//   - "active" → "inactive": Can be done unilaterally, revokes access
+	//   - "inactive" → "active": Requires re-approval process
 	UpdateOrganizationConnection(context.Context, *UpdateOrganizationConnectionRequest) (*UpdateOrganizationConnectionResponse, error)
-	// Delete organization connection
+	// DeleteOrganizationConnection permanently removes a connection.
+	//
+	// This operation:
+	//   - Removes the connection record
+	//   - Revokes all cross-organization access grants
+	//   - Notifies both organizations
+	//   - Archives connection history for audit
+	//
+	// Either organization can delete a connection unilaterally.
 	DeleteOrganizationConnection(context.Context, *DeleteOrganizationConnectionRequest) (*DeleteOrganizationConnectionResponse, error)
-	// === Cross-Organization Access ===
-	// Grant cross-organization access
+	// GrantCrossOrganizationAccess provides temporary access to another organization.
+	//
+	// This enables users from one organization to collaborate with another
+	// without permanent membership transfer.
+	//
+	// Access levels:
+	//   - "guest": Read-only access to specified resources
+	//   - "member": Standard collaboration permissions
+	//   - "admin": Elevated permissions for project management
+	//
+	// Prerequisites:
+	//   - Organizations must be connected or have an active partnership
+	//   - Granting user must have admin permissions in target organization
+	//   - Target organization policies must allow cross-org access
+	//
+	// Access can be time-limited with automatic expiration.
 	GrantCrossOrganizationAccess(context.Context, *GrantCrossOrganizationAccessRequest) (*GrantCrossOrganizationAccessResponse, error)
-	// Revoke cross-organization access
+	// RevokeCrossOrganizationAccess removes cross-organization access.
+	//
+	// Revocation:
+	//   - Takes effect immediately
+	//   - Removes access to all resources in the target organization
+	//   - Logs the revocation for audit purposes
+	//   - Notifies the affected user
+	//
+	// Either the granting organization or the user's home organization
+	// can revoke access.
 	RevokeCrossOrganizationAccess(context.Context, *RevokeCrossOrganizationAccessRequest) (*RevokeCrossOrganizationAccessResponse, error)
-	// List user's cross-organization access
+	// ListUserCrossOrganizationAccess returns all cross-org access for a user.
+	//
+	// The response includes:
+	//   - Target organizations and access levels
+	//   - Expiration dates (if applicable)
+	//   - Who granted the access
+	//   - Current status (active, expired, revoked)
+	//
+	// This helps users understand their collaboration permissions and
+	// administrators audit cross-organization relationships.
 	ListUserCrossOrganizationAccess(context.Context, *ListUserCrossOrganizationAccessRequest) (*ListUserCrossOrganizationAccessResponse, error)
-	// === Invitation Management ===
-	// Create invitation (team, organization, or cross-organization)
+	// CreateInvitation creates an invitation for various types of access.
+	//
+	// Invitation types:
+	//   - "organization": Invite to join an organization
+	//   - "team": Invite to join a specific team
+	//   - "cross_organization": Invite for cross-org collaboration
+	//
+	// Features:
+	//   - Email-based invitations with secure tokens
+	//   - Optional account creation for new users
+	//   - Configurable expiration (default: 7 days)
+	//   - Role assignment upon acceptance
+	//
+	// The invitation email includes context about the organization/team
+	// and the permissions being granted.
 	CreateInvitation(context.Context, *CreateInvitationRequest) (*CreateInvitationResponse, error)
-	// Accept invitation with optional account creation
+	// AcceptInvitation processes an invitation acceptance.
+	//
+	// This method handles:
+	//   - Validating the invitation token and expiration
+	//   - Creating user account (if requested and user doesn't exist)
+	//   - Adding user to organization/team with specified role
+	//   - Sending welcome notifications
+	//
+	// For new account creation:
+	//   - User provides password during acceptance
+	//   - Account is created with email from invitation
+	//   - User is immediately added to the target organization/team
 	AcceptInvitation(context.Context, *AcceptInvitationRequest) (*AcceptInvitationResponse, error)
-	// List invitations
+	// ListInvitations retrieves invitations based on filter criteria.
+	//
+	// Filtering options:
+	//   - By organization (all invitations for an org)
+	//   - By team (team-specific invitations)
+	//   - By email (invitations for a specific email address)
+	//   - By status (pending, accepted, expired, cancelled)
+	//
+	// Results include invitation details and current status.
 	ListInvitations(context.Context, *ListInvitationsRequest) (*ListInvitationsResponse, error)
-	// Cancel invitation
+	// CancelInvitation revokes a pending invitation.
+	//
+	// Cancellation:
+	//   - Invalidates the invitation token
+	//   - Prevents future acceptance
+	//   - Logs the cancellation for audit
+	//   - Optionally notifies the invitee
+	//
+	// Only pending invitations can be cancelled. Accepted invitations
+	// require membership removal instead.
 	CancelInvitation(context.Context, *CancelInvitationRequest) (*CancelInvitationResponse, error)
-	// === Enterprise User Management ===
-	// Bind user to organization (enterprise users)
+	// BindUserToOrganization creates special enterprise user relationships.
+	//
+	// Enterprise bindings enable:
+	//   - Cross-organization user management
+	//   - Centralized access control
+	//   - Automatic organization access based on user attributes
+	//   - Simplified user provisioning for large enterprises
+	//
+	// Binding types:
+	//   - "primary": User's main organizational affiliation
+	//   - "secondary": Additional organizational access
+	//   - "contractor": Temporary engagement with specific scope
+	//
+	// Enterprise users may have special privileges like automatic access
+	// to connected organizations.
 	BindUserToOrganization(context.Context, *BindUserToOrganizationRequest) (*BindUserToOrganizationResponse, error)
-	// Get user's access context
+	// GetUserAccessContext provides comprehensive access information.
+	//
+	// This method returns:
+	//   - Primary organization affiliation
+	//   - All accessible organizations (direct + connected)
+	//   - All accessible teams across organizations
+	//   - Enterprise user status and special privileges
+	//
+	// This is used for:
+	//   - Session establishment
+	//   - Access control decisions
+	//   - UI personalization (showing available organizations/teams)
 	GetUserAccessContext(context.Context, *GetUserAccessContextRequest) (*GetUserAccessContextResponse, error)
-	// Check if user can join organization
+	// CanUserJoinOrganization checks if a user is eligible to join an organization.
+	//
+	// This method considers:
+	//   - Organization invitation policies
+	//   - Email domain restrictions
+	//   - Enterprise user bindings
+	//   - Existing memberships and conflicts
+	//   - Organization capacity limits
+	//
+	// The response includes the eligibility decision and reasoning,
+	// which can be used to provide user-friendly error messages.
 	CanUserJoinOrganization(context.Context, *CanUserJoinOrganizationRequest) (*CanUserJoinOrganizationResponse, error)
-	// === Utility Methods ===
-	// Validate organization exists and user has access
+	// ValidateOrganizationAccess verifies user access to an organization.
+	//
+	// This method checks:
+	//   - Direct organization membership
+	//   - Cross-organization access grants
+	//   - Enterprise user bindings
+	//   - Connected organization relationships
+	//
+	// Returns the access type and whether access is currently valid.
+	// Used for authorization checks throughout the system.
 	ValidateOrganizationAccess(context.Context, *ValidateOrganizationAccessRequest) (*ValidateOrganizationAccessResponse, error)
-	// Validate team exists and user has access
+	// ValidateTeamAccess verifies user access to a specific team.
+	//
+	// This method checks:
+	//   - Direct team membership
+	//   - Organization-level permissions that grant team access
+	//   - Inherited access from parent teams (if hierarchical)
+	//
+	// Returns access status and the organization context for the team.
 	ValidateTeamAccess(context.Context, *ValidateTeamAccessRequest) (*ValidateTeamAccessResponse, error)
-	// Get organization by team ID
+	// GetOrganizationByTeam retrieves the organization that owns a team.
+	//
+	// This utility method is helpful when you have a team ID but need
+	// to determine the organizational context for permission checks
+	// or navigation purposes.
 	GetOrganizationByTeam(context.Context, *GetOrganizationByTeamRequest) (*GetOrganizationByTeamResponse, error)
-	// Cleanup expired invitations and access
+	// CleanupExpiredData removes expired invitations and access grants.
+	//
+	// This maintenance operation:
+	//   - Removes invitations past their expiration date
+	//   - Revokes expired cross-organization access
+	//   - Archives historical data for compliance
+	//   - Updates related audit logs
+	//
+	// Typically called by scheduled background jobs to maintain
+	// data hygiene and security.
 	CleanupExpiredData(context.Context, *CleanupExpiredDataRequest) (*CleanupExpiredDataResponse, error)
 	mustEmbedUnimplementedIdentityServiceServer()
 }

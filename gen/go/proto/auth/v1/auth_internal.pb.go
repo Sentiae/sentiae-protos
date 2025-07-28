@@ -22,12 +22,18 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Enhanced ValidateToken with organizational context
+// ValidateTokenRequest is the request message for ValidateToken RPC.
 type ValidateTokenRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	Token                string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
-	IncludePermissions   bool                   `protobuf:"varint,2,opt,name=include_permissions,json=includePermissions,proto3" json:"include_permissions,omitempty"`       // Include user permissions in response
-	IncludeOrganizations bool                   `protobuf:"varint,3,opt,name=include_organizations,json=includeOrganizations,proto3" json:"include_organizations,omitempty"` // Include user organizations in response
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// JWT token to validate (required).
+	// Expected format: "Bearer <token>" or just "<token>".
+	Token string `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
+	// If true, includes the user's permissions in the response.
+	// This adds latency but provides complete authorization context.
+	IncludePermissions bool `protobuf:"varint,2,opt,name=include_permissions,json=includePermissions,proto3" json:"include_permissions,omitempty"`
+	// If true, includes the user's organization memberships.
+	// Useful for multi-tenant applications.
+	IncludeOrganizations bool `protobuf:"varint,3,opt,name=include_organizations,json=includeOrganizations,proto3" json:"include_organizations,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -83,20 +89,31 @@ func (x *ValidateTokenRequest) GetIncludeOrganizations() bool {
 	return false
 }
 
+// ValidateTokenResponse is the response message for ValidateToken RPC.
 type ValidateTokenResponse struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	IsValid bool                   `protobuf:"varint,1,opt,name=is_valid,json=isValid,proto3" json:"is_valid,omitempty"`
-	UserId  string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	TeamId  string                 `protobuf:"bytes,3,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	Scopes  []string               `protobuf:"bytes,4,rep,name=scopes,proto3" json:"scopes,omitempty"`
-	// Enhanced context
-	PrimaryOrganizationId   string       `protobuf:"bytes,5,opt,name=primary_organization_id,json=primaryOrganizationId,proto3" json:"primary_organization_id,omitempty"`
-	OrganizationIds         []string     `protobuf:"bytes,6,rep,name=organization_ids,json=organizationIds,proto3" json:"organization_ids,omitempty"`
-	TeamPermissions         []string     `protobuf:"bytes,7,rep,name=team_permissions,json=teamPermissions,proto3" json:"team_permissions,omitempty"`
-	OrganizationPermissions []string     `protobuf:"bytes,8,rep,name=organization_permissions,json=organizationPermissions,proto3" json:"organization_permissions,omitempty"`
-	UserProfile             *UserProfile `protobuf:"bytes,9,opt,name=user_profile,json=userProfile,proto3" json:"user_profile,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the token is valid and not expired.
+	IsValid bool `protobuf:"varint,1,opt,name=is_valid,json=isValid,proto3" json:"is_valid,omitempty"`
+	// User ID extracted from the token (empty if invalid).
+	UserId string `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Primary team ID for the user.
+	// @deprecated: Use organization context instead.
+	TeamId string `protobuf:"bytes,3,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	// OAuth scopes associated with the token.
+	// Example: ["read:profile", "write:projects"]
+	Scopes []string `protobuf:"bytes,4,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	// User's primary organization ID.
+	PrimaryOrganizationId string `protobuf:"bytes,5,opt,name=primary_organization_id,json=primaryOrganizationId,proto3" json:"primary_organization_id,omitempty"`
+	// All organization IDs the user has access to.
+	OrganizationIds []string `protobuf:"bytes,6,rep,name=organization_ids,json=organizationIds,proto3" json:"organization_ids,omitempty"`
+	// Permissions within the user's current team context.
+	TeamPermissions []string `protobuf:"bytes,7,rep,name=team_permissions,json=teamPermissions,proto3" json:"team_permissions,omitempty"`
+	// Permissions at the organization level.
+	OrganizationPermissions []string `protobuf:"bytes,8,rep,name=organization_permissions,json=organizationPermissions,proto3" json:"organization_permissions,omitempty"`
+	// Basic user profile information.
+	UserProfile   *UserProfile `protobuf:"bytes,9,opt,name=user_profile,json=userProfile,proto3" json:"user_profile,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ValidateTokenResponse) Reset() {
@@ -192,15 +209,20 @@ func (x *ValidateTokenResponse) GetUserProfile() *UserProfile {
 	return nil
 }
 
-// Enhanced GetUser with complete profile
+// GetUserRequest is the request message for GetUser RPC.
 type GetUserRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	UserId               string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	IncludeOrganizations bool                   `protobuf:"varint,2,opt,name=include_organizations,json=includeOrganizations,proto3" json:"include_organizations,omitempty"`
-	IncludeTeams         bool                   `protobuf:"varint,3,opt,name=include_teams,json=includeTeams,proto3" json:"include_teams,omitempty"`
-	IncludePermissions   bool                   `protobuf:"varint,4,opt,name=include_permissions,json=includePermissions,proto3" json:"include_permissions,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID to retrieve (required).
+	// Format: UUID v4 string.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Include organization memberships in response.
+	IncludeOrganizations bool `protobuf:"varint,2,opt,name=include_organizations,json=includeOrganizations,proto3" json:"include_organizations,omitempty"`
+	// Include team memberships in response.
+	IncludeTeams bool `protobuf:"varint,3,opt,name=include_teams,json=includeTeams,proto3" json:"include_teams,omitempty"`
+	// Include user permissions in response.
+	IncludePermissions bool `protobuf:"varint,4,opt,name=include_permissions,json=includePermissions,proto3" json:"include_permissions,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *GetUserRequest) Reset() {
@@ -261,16 +283,25 @@ func (x *GetUserRequest) GetIncludePermissions() bool {
 	return false
 }
 
+// GetUserResponse is the response message for GetUser RPC.
 type GetUserResponse struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	UserId    string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	TeamId    string                 `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	Email     string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User's unique identifier.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Primary team ID.
+	// @deprecated: Use teams array for team information.
+	TeamId string `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	// User's email address.
+	Email string `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
+	// Account creation timestamp.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	// Enhanced profile data
-	Profile       *UserProfile      `protobuf:"bytes,5,opt,name=profile,proto3" json:"profile,omitempty"`
-	Organizations []*Organization   `protobuf:"bytes,6,rep,name=organizations,proto3" json:"organizations,omitempty"`
-	Teams         []*Team           `protobuf:"bytes,7,rep,name=teams,proto3" json:"teams,omitempty"`
+	// Complete user profile information.
+	Profile *UserProfile `protobuf:"bytes,5,opt,name=profile,proto3" json:"profile,omitempty"`
+	// Organizations the user belongs to (if requested).
+	Organizations []*Organization `protobuf:"bytes,6,rep,name=organizations,proto3" json:"organizations,omitempty"`
+	// Teams the user is a member of (if requested).
+	Teams []*Team `protobuf:"bytes,7,rep,name=teams,proto3" json:"teams,omitempty"`
+	// User's permissions across contexts (if requested).
 	Permissions   []*UserPermission `protobuf:"bytes,8,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -362,12 +393,16 @@ func (x *GetUserResponse) GetPermissions() []*UserPermission {
 	return nil
 }
 
-// Enhanced batch operations
+// GetUsersBatchRequest is the request message for GetUsersBatch RPC.
 type GetUsersBatchRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	UserIds              []string               `protobuf:"bytes,1,rep,name=user_ids,json=userIds,proto3" json:"user_ids,omitempty"`
-	IncludeProfiles      bool                   `protobuf:"varint,2,opt,name=include_profiles,json=includeProfiles,proto3" json:"include_profiles,omitempty"`
-	IncludeOrganizations bool                   `protobuf:"varint,3,opt,name=include_organizations,json=includeOrganizations,proto3" json:"include_organizations,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// List of user IDs to retrieve (required).
+	// Maximum: 100 user IDs per request.
+	UserIds []string `protobuf:"bytes,1,rep,name=user_ids,json=userIds,proto3" json:"user_ids,omitempty"`
+	// Include full profile information for each user.
+	IncludeProfiles bool `protobuf:"varint,2,opt,name=include_profiles,json=includeProfiles,proto3" json:"include_profiles,omitempty"`
+	// Include organization memberships for each user.
+	IncludeOrganizations bool `protobuf:"varint,3,opt,name=include_organizations,json=includeOrganizations,proto3" json:"include_organizations,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -423,9 +458,12 @@ func (x *GetUsersBatchRequest) GetIncludeOrganizations() bool {
 	return false
 }
 
+// GetUsersBatchResponse is the response message for GetUsersBatch RPC.
 type GetUsersBatchResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Users         []*EnhancedUser        `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// List of users found.
+	// Users not found or inaccessible are omitted from results.
+	Users         []*EnhancedUser `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -467,12 +505,16 @@ func (x *GetUsersBatchResponse) GetUsers() []*EnhancedUser {
 	return nil
 }
 
-// Permission checking
+// CheckPermissionRequest is the request message for CheckPermission RPC.
 type CheckPermissionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	TeamId        string                 `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	Permission    string                 `protobuf:"bytes,3,opt,name=permission,proto3" json:"permission,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID to check permissions for (required).
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Team context for permission check (required).
+	TeamId string `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	// Permission to check (required).
+	// Format: "resource:action" (e.g., "projects:write").
+	Permission    string `protobuf:"bytes,3,opt,name=permission,proto3" json:"permission,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -528,10 +570,14 @@ func (x *CheckPermissionRequest) GetPermission() string {
 	return ""
 }
 
+// CheckPermissionResponse is the response message for CheckPermission RPC.
 type CheckPermissionResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	HasPermission bool                   `protobuf:"varint,1,opt,name=has_permission,json=hasPermission,proto3" json:"has_permission,omitempty"`
-	RoleName      string                 `protobuf:"bytes,2,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the user has the requested permission.
+	HasPermission bool `protobuf:"varint,1,opt,name=has_permission,json=hasPermission,proto3" json:"has_permission,omitempty"`
+	// Name of the role granting this permission (if applicable).
+	// Example: "Team Admin", "Developer".
+	RoleName      string `protobuf:"bytes,2,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -580,13 +626,18 @@ func (x *CheckPermissionResponse) GetRoleName() string {
 	return ""
 }
 
+// CheckOrganizationPermissionRequest is the request for CheckOrganizationPermission RPC.
 type CheckOrganizationPermissionRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	UserId         string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	OrganizationId string                 `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
-	Permission     string                 `protobuf:"bytes,3,opt,name=permission,proto3" json:"permission,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID to check permissions for (required).
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Organization context for permission check (required).
+	OrganizationId string `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	// Permission to check (required).
+	// Format: "resource:action" (e.g., "billing:manage", "members:invite").
+	Permission    string `protobuf:"bytes,3,opt,name=permission,proto3" json:"permission,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CheckOrganizationPermissionRequest) Reset() {
@@ -640,10 +691,14 @@ func (x *CheckOrganizationPermissionRequest) GetPermission() string {
 	return ""
 }
 
+// CheckOrganizationPermissionResponse is the response for CheckOrganizationPermission RPC.
 type CheckOrganizationPermissionResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	HasPermission bool                   `protobuf:"varint,1,opt,name=has_permission,json=hasPermission,proto3" json:"has_permission,omitempty"`
-	RoleName      string                 `protobuf:"bytes,2,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the user has the requested permission.
+	HasPermission bool `protobuf:"varint,1,opt,name=has_permission,json=hasPermission,proto3" json:"has_permission,omitempty"`
+	// Name of the organization role granting this permission.
+	// Example: "Organization Owner", "Organization Admin".
+	RoleName      string `protobuf:"bytes,2,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -692,13 +747,19 @@ func (x *CheckOrganizationPermissionResponse) GetRoleName() string {
 	return ""
 }
 
+// GetUserPermissionsRequest is the request for GetUserPermissions RPC.
 type GetUserPermissionsRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	UserId         string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	OrganizationId string                 `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
-	TeamId         string                 `protobuf:"bytes,3,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID to get permissions for (required).
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Organization context (optional).
+	// If provided, returns organization-level permissions.
+	OrganizationId string `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	// Team context (optional).
+	// If provided, returns team-level permissions.
+	TeamId        string `protobuf:"bytes,3,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetUserPermissionsRequest) Reset() {
@@ -752,13 +813,20 @@ func (x *GetUserPermissionsRequest) GetTeamId() string {
 	return ""
 }
 
+// GetUserPermissionsResponse is the response for GetUserPermissions RPC.
 type GetUserPermissionsResponse struct {
-	state                   protoimpl.MessageState `protogen:"open.v1"`
-	OrganizationPermissions []string               `protobuf:"bytes,1,rep,name=organization_permissions,json=organizationPermissions,proto3" json:"organization_permissions,omitempty"`
-	TeamPermissions         []string               `protobuf:"bytes,2,rep,name=team_permissions,json=teamPermissions,proto3" json:"team_permissions,omitempty"`
-	EffectivePermissions    []string               `protobuf:"bytes,3,rep,name=effective_permissions,json=effectivePermissions,proto3" json:"effective_permissions,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Permissions at the organization level.
+	// Example: ["billing:view", "members:manage"].
+	OrganizationPermissions []string `protobuf:"bytes,1,rep,name=organization_permissions,json=organizationPermissions,proto3" json:"organization_permissions,omitempty"`
+	// Permissions at the team level.
+	// Example: ["projects:write", "deployments:execute"].
+	TeamPermissions []string `protobuf:"bytes,2,rep,name=team_permissions,json=teamPermissions,proto3" json:"team_permissions,omitempty"`
+	// Combined effective permissions from all contexts.
+	// This is the union of organization and team permissions.
+	EffectivePermissions []string `protobuf:"bytes,3,rep,name=effective_permissions,json=effectivePermissions,proto3" json:"effective_permissions,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *GetUserPermissionsResponse) Reset() {
@@ -812,10 +880,11 @@ func (x *GetUserPermissionsResponse) GetEffectivePermissions() []string {
 	return nil
 }
 
-// Organization management
+// GetOrganizationRequest is the request for GetOrganization RPC.
 type GetOrganizationRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Organization ID to retrieve (required).
+	OrganizationId string `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -857,11 +926,15 @@ func (x *GetOrganizationRequest) GetOrganizationId() string {
 	return ""
 }
 
+// GetOrganizationResponse is the response for GetOrganization RPC.
 type GetOrganizationResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Organization  *Organization          `protobuf:"bytes,1,opt,name=organization,proto3" json:"organization,omitempty"`
-	MemberCount   int32                  `protobuf:"varint,2,opt,name=member_count,json=memberCount,proto3" json:"member_count,omitempty"`
-	TeamCount     int32                  `protobuf:"varint,3,opt,name=team_count,json=teamCount,proto3" json:"team_count,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Complete organization details.
+	Organization *Organization `protobuf:"bytes,1,opt,name=organization,proto3" json:"organization,omitempty"`
+	// Total number of members in the organization.
+	MemberCount int32 `protobuf:"varint,2,opt,name=member_count,json=memberCount,proto3" json:"member_count,omitempty"`
+	// Total number of teams in the organization.
+	TeamCount     int32 `protobuf:"varint,3,opt,name=team_count,json=teamCount,proto3" json:"team_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -917,9 +990,11 @@ func (x *GetOrganizationResponse) GetTeamCount() int32 {
 	return 0
 }
 
+// ListUserOrganizationsRequest is the request for ListUserOrganizations RPC.
 type ListUserOrganizationsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID to list organizations for (required).
+	UserId        string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -961,10 +1036,14 @@ func (x *ListUserOrganizationsRequest) GetUserId() string {
 	return ""
 }
 
+// ListUserOrganizationsResponse is the response for ListUserOrganizations RPC.
 type ListUserOrganizationsResponse struct {
-	state                  protoimpl.MessageState `protogen:"open.v1"`
-	Organizations          []*Organization        `protobuf:"bytes,1,rep,name=organizations,proto3" json:"organizations,omitempty"`
-	ConnectedOrganizations []*Organization        `protobuf:"bytes,2,rep,name=connected_organizations,json=connectedOrganizations,proto3" json:"connected_organizations,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Organizations where user is a direct member.
+	Organizations []*Organization `protobuf:"bytes,1,rep,name=organizations,proto3" json:"organizations,omitempty"`
+	// Organizations accessible through connections.
+	// These are organizations the user can access but is not a direct member of.
+	ConnectedOrganizations []*Organization `protobuf:"bytes,2,rep,name=connected_organizations,json=connectedOrganizations,proto3" json:"connected_organizations,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -1013,13 +1092,19 @@ func (x *ListUserOrganizationsResponse) GetConnectedOrganizations() []*Organizat
 	return nil
 }
 
+// GetOrganizationMembersRequest is the request for GetOrganizationMembers RPC.
 type GetOrganizationMembersRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
-	Limit          int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset         int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Organization ID to get members for (required).
+	OrganizationId string `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	// Maximum number of members to return.
+	// Default: 50, Maximum: 100.
+	Limit int32 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Number of members to skip for pagination.
+	// Default: 0.
+	Offset        int32 `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetOrganizationMembersRequest) Reset() {
@@ -1073,10 +1158,13 @@ func (x *GetOrganizationMembersRequest) GetOffset() int32 {
 	return 0
 }
 
+// GetOrganizationMembersResponse is the response for GetOrganizationMembers RPC.
 type GetOrganizationMembersResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Members       []*OrganizationMember  `protobuf:"bytes,1,rep,name=members,proto3" json:"members,omitempty"`
-	TotalCount    int32                  `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// List of organization members.
+	Members []*OrganizationMember `protobuf:"bytes,1,rep,name=members,proto3" json:"members,omitempty"`
+	// Total count of members (for pagination).
+	TotalCount    int32 `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1125,10 +1213,11 @@ func (x *GetOrganizationMembersResponse) GetTotalCount() int32 {
 	return 0
 }
 
-// Team management
+// GetTeamMembersRequest is the request for GetTeamMembers RPC.
 type GetTeamMembersRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Team ID to get members for (required).
+	TeamId        string `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1170,9 +1259,11 @@ func (x *GetTeamMembersRequest) GetTeamId() string {
 	return ""
 }
 
+// GetTeamMembersResponse is the response for GetTeamMembers RPC.
 type GetTeamMembersResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Members       []*TeamMember          `protobuf:"bytes,1,rep,name=members,proto3" json:"members,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// List of team members with their roles.
+	Members       []*TeamMember `protobuf:"bytes,1,rep,name=members,proto3" json:"members,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1214,9 +1305,11 @@ func (x *GetTeamMembersResponse) GetMembers() []*TeamMember {
 	return nil
 }
 
+// GetTeamHierarchyRequest is the request for GetTeamHierarchy RPC.
 type GetTeamHierarchyRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Organization ID to get team hierarchy for (required).
+	OrganizationId string `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1258,9 +1351,12 @@ func (x *GetTeamHierarchyRequest) GetOrganizationId() string {
 	return ""
 }
 
+// GetTeamHierarchyResponse is the response for GetTeamHierarchy RPC.
 type GetTeamHierarchyResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RootTeams     []*Team                `protobuf:"bytes,1,rep,name=root_teams,json=rootTeams,proto3" json:"root_teams,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Root-level teams with nested child teams.
+	// The full hierarchy is represented as a tree structure.
+	RootTeams     []*Team `protobuf:"bytes,1,rep,name=root_teams,json=rootTeams,proto3" json:"root_teams,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1302,9 +1398,11 @@ func (x *GetTeamHierarchyResponse) GetRootTeams() []*Team {
 	return nil
 }
 
+// GetTeamRequest is the request for GetTeam RPC.
 type GetTeamRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Team ID to retrieve (required).
+	TeamId        string `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1346,12 +1444,18 @@ func (x *GetTeamRequest) GetTeamId() string {
 	return ""
 }
 
+// GetTeamResponse is the response for GetTeam RPC.
 type GetTeamResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Team          *Team                  `protobuf:"bytes,1,opt,name=team,proto3" json:"team,omitempty"`
-	Organization  *Organization          `protobuf:"bytes,2,opt,name=organization,proto3" json:"organization,omitempty"`
-	ParentTeam    *Team                  `protobuf:"bytes,3,opt,name=parent_team,json=parentTeam,proto3" json:"parent_team,omitempty"`
-	ChildTeams    []*Team                `protobuf:"bytes,4,rep,name=child_teams,json=childTeams,proto3" json:"child_teams,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Complete team details.
+	Team *Team `protobuf:"bytes,1,opt,name=team,proto3" json:"team,omitempty"`
+	// Organization that owns this team.
+	Organization *Organization `protobuf:"bytes,2,opt,name=organization,proto3" json:"organization,omitempty"`
+	// Parent team if this is a nested team.
+	// Null for root-level teams.
+	ParentTeam *Team `protobuf:"bytes,3,opt,name=parent_team,json=parentTeam,proto3" json:"parent_team,omitempty"`
+	// Direct child teams under this team.
+	ChildTeams    []*Team `protobuf:"bytes,4,rep,name=child_teams,json=childTeams,proto3" json:"child_teams,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1414,12 +1518,16 @@ func (x *GetTeamResponse) GetChildTeams() []*Team {
 	return nil
 }
 
+// ListOrganizationTeamsRequest is the request for ListOrganizationTeams RPC.
 type ListOrganizationTeamsRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
-	ParentTeamId   string                 `protobuf:"bytes,2,opt,name=parent_team_id,json=parentTeamId,proto3" json:"parent_team_id,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Organization ID to list teams for (required).
+	OrganizationId string `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	// Optional parent team ID to filter by.
+	// If empty, returns all teams in the organization.
+	ParentTeamId  string `protobuf:"bytes,2,opt,name=parent_team_id,json=parentTeamId,proto3" json:"parent_team_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListOrganizationTeamsRequest) Reset() {
@@ -1466,9 +1574,11 @@ func (x *ListOrganizationTeamsRequest) GetParentTeamId() string {
 	return ""
 }
 
+// ListOrganizationTeamsResponse is the response for ListOrganizationTeams RPC.
 type ListOrganizationTeamsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Teams         []*Team                `protobuf:"bytes,1,rep,name=teams,proto3" json:"teams,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// List of teams matching the filter criteria.
+	Teams         []*Team `protobuf:"bytes,1,rep,name=teams,proto3" json:"teams,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1510,11 +1620,13 @@ func (x *ListOrganizationTeamsResponse) GetTeams() []*Team {
 	return nil
 }
 
-// Access validation
+// ValidateOrganizationAccessRequest is the request for ValidateOrganizationAccess RPC.
 type ValidateOrganizationAccessRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	UserId         string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	OrganizationId string                 `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID to validate access for (required).
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Organization ID to check access to (required).
+	OrganizationId string `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1563,10 +1675,14 @@ func (x *ValidateOrganizationAccessRequest) GetOrganizationId() string {
 	return ""
 }
 
+// ValidateOrganizationAccessResponse is the response for ValidateOrganizationAccess RPC.
 type ValidateOrganizationAccessResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	HasAccess     bool                   `protobuf:"varint,1,opt,name=has_access,json=hasAccess,proto3" json:"has_access,omitempty"`
-	AccessType    string                 `protobuf:"bytes,2,opt,name=access_type,json=accessType,proto3" json:"access_type,omitempty"` // "member", "cross_org_access", "connected"
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the user has access to the organization.
+	HasAccess bool `protobuf:"varint,1,opt,name=has_access,json=hasAccess,proto3" json:"has_access,omitempty"`
+	// Type of access the user has.
+	// Values: "member", "cross_org_access", "connected".
+	AccessType    string `protobuf:"bytes,2,opt,name=access_type,json=accessType,proto3" json:"access_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1615,10 +1731,13 @@ func (x *ValidateOrganizationAccessResponse) GetAccessType() string {
 	return ""
 }
 
+// ValidateTeamAccessRequest is the request for ValidateTeamAccess RPC.
 type ValidateTeamAccessRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	TeamId        string                 `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID to validate access for (required).
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Team ID to check access to (required).
+	TeamId        string `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1667,10 +1786,14 @@ func (x *ValidateTeamAccessRequest) GetTeamId() string {
 	return ""
 }
 
+// ValidateTeamAccessResponse is the response for ValidateTeamAccess RPC.
 type ValidateTeamAccessResponse struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	HasAccess      bool                   `protobuf:"varint,1,opt,name=has_access,json=hasAccess,proto3" json:"has_access,omitempty"`
-	OrganizationId string                 `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the user has access to the team.
+	HasAccess bool `protobuf:"varint,1,opt,name=has_access,json=hasAccess,proto3" json:"has_access,omitempty"`
+	// Organization ID that owns the team.
+	// Useful for determining organization context.
+	OrganizationId string `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1719,9 +1842,11 @@ func (x *ValidateTeamAccessResponse) GetOrganizationId() string {
 	return ""
 }
 
+// GetUserAccessContextRequest is the request for GetUserAccessContext RPC.
 type GetUserAccessContextRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID to get access context for (required).
+	UserId        string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1763,15 +1888,23 @@ func (x *GetUserAccessContextRequest) GetUserId() string {
 	return ""
 }
 
+// GetUserAccessContextResponse is the response for GetUserAccessContext RPC.
 type GetUserAccessContextResponse struct {
-	state                     protoimpl.MessageState `protogen:"open.v1"`
-	UserId                    string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	PrimaryOrganizationId     string                 `protobuf:"bytes,2,opt,name=primary_organization_id,json=primaryOrganizationId,proto3" json:"primary_organization_id,omitempty"`
-	AccessibleOrganizationIds []string               `protobuf:"bytes,3,rep,name=accessible_organization_ids,json=accessibleOrganizationIds,proto3" json:"accessible_organization_ids,omitempty"`
-	AccessibleTeamIds         []string               `protobuf:"bytes,4,rep,name=accessible_team_ids,json=accessibleTeamIds,proto3" json:"accessible_team_ids,omitempty"`
-	IsEnterpriseUser          bool                   `protobuf:"varint,5,opt,name=is_enterprise_user,json=isEnterpriseUser,proto3" json:"is_enterprise_user,omitempty"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID (echoed from request).
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// User's primary organization.
+	PrimaryOrganizationId string `protobuf:"bytes,2,opt,name=primary_organization_id,json=primaryOrganizationId,proto3" json:"primary_organization_id,omitempty"`
+	// All organizations the user can access.
+	// Includes both direct memberships and cross-org access.
+	AccessibleOrganizationIds []string `protobuf:"bytes,3,rep,name=accessible_organization_ids,json=accessibleOrganizationIds,proto3" json:"accessible_organization_ids,omitempty"`
+	// All teams the user can access across all organizations.
+	AccessibleTeamIds []string `protobuf:"bytes,4,rep,name=accessible_team_ids,json=accessibleTeamIds,proto3" json:"accessible_team_ids,omitempty"`
+	// Whether the user has enterprise-level access.
+	// Enterprise users may have special privileges across organizations.
+	IsEnterpriseUser bool `protobuf:"varint,5,opt,name=is_enterprise_user,json=isEnterpriseUser,proto3" json:"is_enterprise_user,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GetUserAccessContextResponse) Reset() {
@@ -1839,10 +1972,11 @@ func (x *GetUserAccessContextResponse) GetIsEnterpriseUser() bool {
 	return false
 }
 
-// Cross-organization features
+// ListConnectedOrganizationsRequest is the request for ListConnectedOrganizations RPC.
 type ListConnectedOrganizationsRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Organization ID to list connections for (required).
+	OrganizationId string `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1884,8 +2018,10 @@ func (x *ListConnectedOrganizationsRequest) GetOrganizationId() string {
 	return ""
 }
 
+// ListConnectedOrganizationsResponse is the response for ListConnectedOrganizations RPC.
 type ListConnectedOrganizationsResponse struct {
-	state                  protoimpl.MessageState   `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// List of organizations connected to the requested organization.
 	ConnectedOrganizations []*ConnectedOrganization `protobuf:"bytes,1,rep,name=connected_organizations,json=connectedOrganizations,proto3" json:"connected_organizations,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
@@ -1928,9 +2064,11 @@ func (x *ListConnectedOrganizationsResponse) GetConnectedOrganizations() []*Conn
 	return nil
 }
 
+// ListUserCrossOrganizationAccessRequest is the request for ListUserCrossOrganizationAccess RPC.
 type ListUserCrossOrganizationAccessRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID to list cross-org access for (required).
+	UserId        string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1972,8 +2110,10 @@ func (x *ListUserCrossOrganizationAccessRequest) GetUserId() string {
 	return ""
 }
 
+// ListUserCrossOrganizationAccessResponse is the response for ListUserCrossOrganizationAccess RPC.
 type ListUserCrossOrganizationAccessResponse struct {
-	state         protoimpl.MessageState     `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// List of cross-organization access grants for the user.
 	AccessList    []*CrossOrganizationAccess `protobuf:"bytes,1,rep,name=access_list,json=accessList,proto3" json:"access_list,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2016,15 +2156,24 @@ func (x *ListUserCrossOrganizationAccessResponse) GetAccessList() []*CrossOrgani
 	return nil
 }
 
-// User search and filtering
+// SearchUsersRequest is the request for SearchUsers RPC.
 type SearchUsersRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Query          string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`                                         // Search in name, email
-	OrganizationId string                 `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"` // Optional: filter by organization
-	Limit          int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset         int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Search query string (required).
+	// Searches in user's full name and email address.
+	// Minimum length: 2 characters.
+	Query string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	// Optional organization filter.
+	// If provided, only searches users within this organization.
+	OrganizationId string `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	// Maximum number of results to return.
+	// Default: 20, Maximum: 100.
+	Limit int32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Number of results to skip for pagination.
+	// Default: 0.
+	Offset        int32 `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchUsersRequest) Reset() {
@@ -2085,10 +2234,13 @@ func (x *SearchUsersRequest) GetOffset() int32 {
 	return 0
 }
 
+// SearchUsersResponse is the response for SearchUsers RPC.
 type SearchUsersResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Users         []*EnhancedUser        `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
-	TotalCount    int32                  `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Users matching the search criteria.
+	Users []*EnhancedUser `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
+	// Total number of matching users (for pagination).
+	TotalCount    int32 `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2137,13 +2289,19 @@ func (x *SearchUsersResponse) GetTotalCount() int32 {
 	return 0
 }
 
+// GetUsersByOrganizationRequest is the request for GetUsersByOrganization RPC.
 type GetUsersByOrganizationRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
-	Limit          int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset         int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Organization ID to get users for (required).
+	OrganizationId string `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	// Maximum number of users to return.
+	// Default: 50, Maximum: 100.
+	Limit int32 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Number of users to skip for pagination.
+	// Default: 0.
+	Offset        int32 `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetUsersByOrganizationRequest) Reset() {
@@ -2197,10 +2355,13 @@ func (x *GetUsersByOrganizationRequest) GetOffset() int32 {
 	return 0
 }
 
+// GetUsersByOrganizationResponse is the response for GetUsersByOrganization RPC.
 type GetUsersByOrganizationResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Users         []*EnhancedUser        `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
-	TotalCount    int32                  `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Users in the organization.
+	Users []*EnhancedUser `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
+	// Total number of users in the organization (for pagination).
+	TotalCount    int32 `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2249,12 +2410,17 @@ func (x *GetUsersByOrganizationResponse) GetTotalCount() int32 {
 	return 0
 }
 
-// Session enrichment
+// EnrichUserSessionRequest is the request for EnrichUserSession RPC.
 type EnrichUserSessionRequest struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	UserId                string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	CurrentTeamId         string                 `protobuf:"bytes,2,opt,name=current_team_id,json=currentTeamId,proto3" json:"current_team_id,omitempty"`
-	CurrentOrganizationId string                 `protobuf:"bytes,3,opt,name=current_organization_id,json=currentOrganizationId,proto3" json:"current_organization_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User ID to enrich session for (required).
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Current team context (optional).
+	// If provided, team-specific permissions are included.
+	CurrentTeamId string `protobuf:"bytes,2,opt,name=current_team_id,json=currentTeamId,proto3" json:"current_team_id,omitempty"`
+	// Current organization context (optional).
+	// If provided, organization-specific data is prioritized.
+	CurrentOrganizationId string `protobuf:"bytes,3,opt,name=current_organization_id,json=currentOrganizationId,proto3" json:"current_organization_id,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -2310,15 +2476,22 @@ func (x *EnrichUserSessionRequest) GetCurrentOrganizationId() string {
 	return ""
 }
 
+// EnrichUserSessionResponse is the response for EnrichUserSession RPC.
 type EnrichUserSessionResponse struct {
-	state                  protoimpl.MessageState `protogen:"open.v1"`
-	Profile                *UserProfile           `protobuf:"bytes,1,opt,name=profile,proto3" json:"profile,omitempty"`
-	AvailableOrganizations []*Organization        `protobuf:"bytes,2,rep,name=available_organizations,json=availableOrganizations,proto3" json:"available_organizations,omitempty"`
-	AvailableTeams         []*Team                `protobuf:"bytes,3,rep,name=available_teams,json=availableTeams,proto3" json:"available_teams,omitempty"`
-	CurrentPermissions     []string               `protobuf:"bytes,4,rep,name=current_permissions,json=currentPermissions,proto3" json:"current_permissions,omitempty"`
-	SessionContext         map[string]string      `protobuf:"bytes,5,rep,name=session_context,json=sessionContext,proto3" json:"session_context,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User's profile information.
+	Profile *UserProfile `protobuf:"bytes,1,opt,name=profile,proto3" json:"profile,omitempty"`
+	// Organizations available to the user.
+	AvailableOrganizations []*Organization `protobuf:"bytes,2,rep,name=available_organizations,json=availableOrganizations,proto3" json:"available_organizations,omitempty"`
+	// Teams available to the user in current organization context.
+	AvailableTeams []*Team `protobuf:"bytes,3,rep,name=available_teams,json=availableTeams,proto3" json:"available_teams,omitempty"`
+	// Effective permissions in the current context.
+	CurrentPermissions []string `protobuf:"bytes,4,rep,name=current_permissions,json=currentPermissions,proto3" json:"current_permissions,omitempty"`
+	// Additional session context data.
+	// Can include custom application-specific key-value pairs.
+	SessionContext map[string]string `protobuf:"bytes,5,rep,name=session_context,json=sessionContext,proto3" json:"session_context,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *EnrichUserSessionResponse) Reset() {
@@ -2386,10 +2559,11 @@ func (x *EnrichUserSessionResponse) GetSessionContext() map[string]string {
 	return nil
 }
 
-// Utility methods
+// GetOrganizationByTeamRequest is the request for GetOrganizationByTeam RPC.
 type GetOrganizationByTeamRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Team ID to find organization for (required).
+	TeamId        string `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2431,9 +2605,11 @@ func (x *GetOrganizationByTeamRequest) GetTeamId() string {
 	return ""
 }
 
+// GetOrganizationByTeamResponse is the response for GetOrganizationByTeam RPC.
 type GetOrganizationByTeamResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Organization  *Organization          `protobuf:"bytes,1,opt,name=organization,proto3" json:"organization,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Organization that owns the specified team.
+	Organization  *Organization `protobuf:"bytes,1,opt,name=organization,proto3" json:"organization,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2475,14 +2651,24 @@ func (x *GetOrganizationByTeamResponse) GetOrganization() *Organization {
 	return nil
 }
 
-// Data structures
+// UserProfile contains basic user information.
+//
+// This message is used across multiple RPCs to provide consistent
+// user profile data.
 type UserProfile struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	FullName      string                 `protobuf:"bytes,2,opt,name=full_name,json=fullName,proto3" json:"full_name,omitempty"`
-	AvatarUrl     string                 `protobuf:"bytes,3,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
-	Email         string                 `protobuf:"bytes,4,opt,name=email,proto3" json:"email,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User's unique identifier.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// User's display name.
+	FullName string `protobuf:"bytes,2,opt,name=full_name,json=fullName,proto3" json:"full_name,omitempty"`
+	// URL to user's avatar image.
+	// May be empty if user has no avatar.
+	AvatarUrl string `protobuf:"bytes,3,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
+	// User's email address.
+	Email string `protobuf:"bytes,4,opt,name=email,proto3" json:"email,omitempty"`
+	// Profile creation timestamp.
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Last profile update timestamp.
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2560,15 +2746,29 @@ func (x *UserProfile) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// Organization represents a company or group in the system.
+//
+// Organizations are the top-level container for teams and users.
 type Organization struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Slug          string                 `protobuf:"bytes,3,opt,name=slug,proto3" json:"slug,omitempty"`
-	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	LogoUrl       string                 `protobuf:"bytes,5,opt,name=logo_url,json=logoUrl,proto3" json:"logo_url,omitempty"`
-	Website       string                 `protobuf:"bytes,6,opt,name=website,proto3" json:"website,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Unique organization identifier.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Organization display name.
+	// Example: "Acme Corporation".
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// URL-friendly organization identifier.
+	// Example: "acme-corp".
+	// Used in URLs and API paths.
+	Slug string `protobuf:"bytes,3,opt,name=slug,proto3" json:"slug,omitempty"`
+	// Human-readable description of the organization.
+	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	// URL to organization's logo image.
+	LogoUrl string `protobuf:"bytes,5,opt,name=logo_url,json=logoUrl,proto3" json:"logo_url,omitempty"`
+	// Organization's website URL.
+	Website string `protobuf:"bytes,6,opt,name=website,proto3" json:"website,omitempty"`
+	// Organization creation timestamp.
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Last organization update timestamp.
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2660,19 +2860,36 @@ func (x *Organization) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// Team represents a group within an organization.
+//
+// Teams can be hierarchical, with parent-child relationships forming
+// a tree structure within the organization.
 type Team struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	OrganizationId string                 `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
-	ParentTeamId   string                 `protobuf:"bytes,3,opt,name=parent_team_id,json=parentTeamId,proto3" json:"parent_team_id,omitempty"`
-	Name           string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
-	HierarchyDepth int32                  `protobuf:"varint,5,opt,name=hierarchy_depth,json=hierarchyDepth,proto3" json:"hierarchy_depth,omitempty"`
-	TeamPath       string                 `protobuf:"bytes,6,opt,name=team_path,json=teamPath,proto3" json:"team_path,omitempty"`
-	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	ChildTeams     []*Team                `protobuf:"bytes,9,rep,name=child_teams,json=childTeams,proto3" json:"child_teams,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Unique team identifier.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Parent organization ID (required).
+	OrganizationId string `protobuf:"bytes,2,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	// Parent team ID for nested teams.
+	// Empty for root-level teams.
+	ParentTeamId string `protobuf:"bytes,3,opt,name=parent_team_id,json=parentTeamId,proto3" json:"parent_team_id,omitempty"`
+	// Team display name.
+	// Example: "Engineering", "Product Design".
+	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	// Depth in the team hierarchy.
+	// 0 for root teams, increments for each level.
+	HierarchyDepth int32 `protobuf:"varint,5,opt,name=hierarchy_depth,json=hierarchyDepth,proto3" json:"hierarchy_depth,omitempty"`
+	// Materialized path for efficient hierarchy queries.
+	// Format: "/root_id/parent_id/team_id".
+	TeamPath string `protobuf:"bytes,6,opt,name=team_path,json=teamPath,proto3" json:"team_path,omitempty"`
+	// Team creation timestamp.
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Last team update timestamp.
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// Nested child teams (only populated in hierarchy queries).
+	ChildTeams    []*Team `protobuf:"bytes,9,rep,name=child_teams,json=childTeams,proto3" json:"child_teams,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Team) Reset() {
@@ -2768,13 +2985,21 @@ func (x *Team) GetChildTeams() []*Team {
 	return nil
 }
 
+// TeamMember represents a user's membership in a team.
 type TeamMember struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	FullName      string                 `protobuf:"bytes,2,opt,name=full_name,json=fullName,proto3" json:"full_name,omitempty"`
-	RoleName      string                 `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
-	Email         string                 `protobuf:"bytes,4,opt,name=email,proto3" json:"email,omitempty"`
-	AvatarUrl     string                 `protobuf:"bytes,5,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User's unique identifier.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// User's display name.
+	FullName string `protobuf:"bytes,2,opt,name=full_name,json=fullName,proto3" json:"full_name,omitempty"`
+	// Role within the team.
+	// Example: "Team Lead", "Developer", "Observer".
+	RoleName string `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
+	// User's email address.
+	Email string `protobuf:"bytes,4,opt,name=email,proto3" json:"email,omitempty"`
+	// URL to user's avatar image.
+	AvatarUrl string `protobuf:"bytes,5,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
+	// Timestamp when user joined the team.
 	JoinedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=joined_at,json=joinedAt,proto3" json:"joined_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2852,17 +3077,26 @@ func (x *TeamMember) GetJoinedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// OrganizationMember represents a user's membership in an organization.
 type OrganizationMember struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	UserId               string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	FullName             string                 `protobuf:"bytes,2,opt,name=full_name,json=fullName,proto3" json:"full_name,omitempty"`
-	Email                string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
-	AvatarUrl            string                 `protobuf:"bytes,4,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
-	OrganizationRoleName string                 `protobuf:"bytes,5,opt,name=organization_role_name,json=organizationRoleName,proto3" json:"organization_role_name,omitempty"`
-	TeamMemberships      []string               `protobuf:"bytes,6,rep,name=team_memberships,json=teamMemberships,proto3" json:"team_memberships,omitempty"`
-	JoinedAt             *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=joined_at,json=joinedAt,proto3" json:"joined_at,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User's unique identifier.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// User's display name.
+	FullName string `protobuf:"bytes,2,opt,name=full_name,json=fullName,proto3" json:"full_name,omitempty"`
+	// User's email address.
+	Email string `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
+	// URL to user's avatar image.
+	AvatarUrl string `protobuf:"bytes,4,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
+	// Organization-level role.
+	// Example: "Organization Owner", "Organization Member".
+	OrganizationRoleName string `protobuf:"bytes,5,opt,name=organization_role_name,json=organizationRoleName,proto3" json:"organization_role_name,omitempty"`
+	// List of team names the user belongs to.
+	TeamMemberships []string `protobuf:"bytes,6,rep,name=team_memberships,json=teamMemberships,proto3" json:"team_memberships,omitempty"`
+	// Timestamp when user joined the organization.
+	JoinedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=joined_at,json=joinedAt,proto3" json:"joined_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *OrganizationMember) Reset() {
@@ -2944,12 +3178,19 @@ func (x *OrganizationMember) GetJoinedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// UserPermission represents permissions in a specific context.
 type UserPermission struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ContextType   string                 `protobuf:"bytes,1,opt,name=context_type,json=contextType,proto3" json:"context_type,omitempty"` // "organization" or "team"
-	ContextId     string                 `protobuf:"bytes,2,opt,name=context_id,json=contextId,proto3" json:"context_id,omitempty"`       // organization_id or team_id
-	RoleName      string                 `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
-	Permissions   []string               `protobuf:"bytes,4,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Type of context for these permissions.
+	// Values: "organization" or "team".
+	ContextType string `protobuf:"bytes,1,opt,name=context_type,json=contextType,proto3" json:"context_type,omitempty"`
+	// ID of the context (organization_id or team_id).
+	ContextId string `protobuf:"bytes,2,opt,name=context_id,json=contextId,proto3" json:"context_id,omitempty"`
+	// Role granting these permissions.
+	RoleName string `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
+	// List of permission strings.
+	// Format: "resource:action" (e.g., "projects:delete").
+	Permissions   []string `protobuf:"bytes,4,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3012,13 +3253,22 @@ func (x *UserPermission) GetPermissions() []string {
 	return nil
 }
 
+// EnhancedUser provides comprehensive user information.
+//
+// Used in batch operations and search results.
 type EnhancedUser struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
-	Profile       *UserProfile           `protobuf:"bytes,3,opt,name=profile,proto3" json:"profile,omitempty"`
-	Organizations []*Organization        `protobuf:"bytes,4,rep,name=organizations,proto3" json:"organizations,omitempty"`
-	Teams         []*Team                `protobuf:"bytes,5,rep,name=teams,proto3" json:"teams,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// User's unique identifier.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// User's email address.
+	Email string `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
+	// Complete user profile.
+	Profile *UserProfile `protobuf:"bytes,3,opt,name=profile,proto3" json:"profile,omitempty"`
+	// Organizations the user belongs to (if requested).
+	Organizations []*Organization `protobuf:"bytes,4,rep,name=organizations,proto3" json:"organizations,omitempty"`
+	// Teams the user is a member of (if requested).
+	Teams []*Team `protobuf:"bytes,5,rep,name=teams,proto3" json:"teams,omitempty"`
+	// Account creation timestamp.
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3096,14 +3346,21 @@ func (x *EnhancedUser) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// ConnectedOrganization represents a trust relationship between organizations.
 type ConnectedOrganization struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Organization   *Organization          `protobuf:"bytes,1,opt,name=organization,proto3" json:"organization,omitempty"`
-	ConnectionType string                 `protobuf:"bytes,2,opt,name=connection_type,json=connectionType,proto3" json:"connection_type,omitempty"` // "partner", "subsidiary", "parent", etc.
-	Status         string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`                                       // "active", "pending", "inactive"
-	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Connected organization details.
+	Organization *Organization `protobuf:"bytes,1,opt,name=organization,proto3" json:"organization,omitempty"`
+	// Type of connection.
+	// Values: "partner", "subsidiary", "parent", "vendor", "customer".
+	ConnectionType string `protobuf:"bytes,2,opt,name=connection_type,json=connectionType,proto3" json:"connection_type,omitempty"`
+	// Connection status.
+	// Values: "active", "pending", "inactive", "expired".
+	Status string `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	// When the connection was established.
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ConnectedOrganization) Reset() {
@@ -3164,16 +3421,28 @@ func (x *ConnectedOrganization) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// CrossOrganizationAccess represents temporary access to another organization.
+//
+// This enables users from one organization to collaborate with another
+// organization without permanent membership.
 type CrossOrganizationAccess struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	Id                   string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	SourceOrganizationId string                 `protobuf:"bytes,2,opt,name=source_organization_id,json=sourceOrganizationId,proto3" json:"source_organization_id,omitempty"`
-	TargetOrganization   *Organization          `protobuf:"bytes,3,opt,name=target_organization,json=targetOrganization,proto3" json:"target_organization,omitempty"`
-	AccessLevel          string                 `protobuf:"bytes,4,opt,name=access_level,json=accessLevel,proto3" json:"access_level,omitempty"` // "guest", "member", "admin"
-	ExpiresAt            *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	CreatedAt            *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Unique access grant identifier.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Organization granting the access.
+	SourceOrganizationId string `protobuf:"bytes,2,opt,name=source_organization_id,json=sourceOrganizationId,proto3" json:"source_organization_id,omitempty"`
+	// Organization being accessed.
+	TargetOrganization *Organization `protobuf:"bytes,3,opt,name=target_organization,json=targetOrganization,proto3" json:"target_organization,omitempty"`
+	// Level of access granted.
+	// Values: "guest" (read-only), "member" (standard), "admin" (elevated).
+	AccessLevel string `protobuf:"bytes,4,opt,name=access_level,json=accessLevel,proto3" json:"access_level,omitempty"`
+	// When this access expires (optional).
+	// Null for permanent access grants.
+	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// When this access was granted.
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CrossOrganizationAccess) Reset() {
