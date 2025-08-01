@@ -117,8 +117,9 @@ message AuthRegisterUserRequest {
   // Must meet the organization's password policy requirements.
   string password = 2;
 
-  // Team ID to associate with the new user (required).
-  // The user will be added to this team upon account creation.
+  // Team ID to associate with the new user (optional).
+  // If provided, the user will be added to this team upon account creation.
+  // If not provided, the user will need to create or join an organization later.
   string team_id = 3;
 }
 
