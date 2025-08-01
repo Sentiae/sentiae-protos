@@ -301,8 +301,9 @@ type AuthRegisterUserRequest struct {
 	// Password for the new user account (required).
 	// Must meet the organization's password policy requirements.
 	Password string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
-	// Team ID to associate with the new user (required).
-	// The user will be added to this team upon account creation.
+	// Team ID to associate with the new user (optional).
+	// If provided, the user will be added to this team upon account creation.
+	// If not provided, the user will need to create or join an organization later.
 	TeamId        string `protobuf:"bytes,3,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
