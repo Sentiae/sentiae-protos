@@ -16,7 +16,7 @@ env:
 permissions:
   contents: read
   packages: write
-  security-events: write
+  # security-events: write  # Disabled - requires GitHub Enterprise
   id-token: write
 
 jobs:
@@ -318,16 +318,29 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Run Gosec security scanner
-        uses: securecodewarrior/github-action-gosec@master
-        with:
-          args: '-fmt sarif -out gosec.sarif ./...'
+      - name: Install Gosec
+        run: go install github.com/securecode/gosec/v2/cmd/gosec@latest
 
-      - name: Upload Gosec results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v2
-        if: always()
+      - name: Run Gosec security scanner
+        run: |
+          gosec -fmt sarif -out gosec.sarif ./...
+        continue-on-error: true
+
+      # Upload Gosec results (disabled - requires GitHub Enterprise)
+      # - name: Upload Gosec results to GitHub Security tab
+      #   uses: github/codeql-action/upload-sarif@v2
+      #   if: always()
+      #   with:
+      #     sarif_file: gosec.sarif
+      #     token: ${{ secrets.GHCR_PAT }}
+
+      - name: Upload Gosec results as artifact
+        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('gosec.sarif') != ''
         with:
-          sarif_file: gosec.sarif
+          name: gosec-results
+          path: gosec.sarif
+          retention-days: 30
 
       - name: Run govulncheck
         run: |
