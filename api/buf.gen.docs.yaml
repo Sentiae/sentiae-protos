@@ -1,0 +1,10 @@
+version: v1
+plugins:
+  - plugin: buf.build/protocolbuffers/doc:v1.5.0
+    out: .
+    opt:
+      - html,index.html
+  - plugin: buf.build/protocolbuffers/doc:v1.5.0
+    out: .
+    opt:
+      - markdown,api-docs.md

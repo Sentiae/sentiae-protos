@@ -1,0 +1,519 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  BUF_VERSION: '1.28.1'
+  GO_VERSION: '1.21'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: sentiae/sentiae-protos
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  id-token: write
+
+jobs:
+  # Pre-checks and validation
+  pre-checks:
+    name: Pre-checks
+    runs-on: ubuntu-latest
+    outputs:
+      should-skip: ${{ steps.skip-check.outputs.should_skip }}
+      has-proto-changes: ${{ steps.changes.outputs.proto }}
+      has-go-changes: ${{ steps.changes.outputs.go }}
+    steps:
+      - name: Skip duplicate actions
+        id: skip-check
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          concurrent_skipping: same_content_newer
+          skip_after_successful_duplicate: true
+          do_not_skip: '["workflow_dispatch", "schedule"]'
+
+      - name: Checkout code
+        if: steps.skip-check.outputs.should_skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        if: steps.skip-check.outputs.should_skip != 'true'
+        id: changes
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            proto:
+              - 'api/proto/**/*.proto'
+              - 'api/buf.yaml'
+              - 'api/buf.gen.yaml'
+            go:
+              - 'go.mod'
+              - 'go.sum'
+              - 'gen/go/**/*.go'
+              - '**/*_test.go'
+
+  # Lint and validate Protocol Buffers
+  buf-lint:
+    name: Protocol Buffer Linting
+    runs-on: ubuntu-latest
+    needs: pre-checks
+    if: needs.pre-checks.outputs.should-skip != 'true' && needs.pre-checks.outputs.has-proto-changes == 'true'
+    steps:
+      - name: Checkpoint
+        run: echo "Starting Protocol Buffer linting..."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Buf CLI
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Buf lint
+        working-directory: api
+        run: buf lint --error-format=github
+
+      - name: Buf format check
+        working-directory: api
+        run: |
+          buf format --diff --exit-code
+          if [ $? -ne 0 ]; then
+            echo "::error::Proto files are not properly formatted. Run 'buf format -w' to fix."
+            exit 1
+          fi
+
+      - name: Generate documentation
+        working-directory: api
+        run: |
+          buf generate --template buf.gen.docs.yaml --output ../docs
+          if [ -d "../docs" ] && [ "$(ls -A ../docs)" ]; then
+            echo "✅ Documentation generated successfully"
+          else
+            echo "::warning::No documentation was generated"
+          fi
+
+      - name: Upload proto documentation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proto-docs
+          path: docs/
+          retention-days: 30
+
+  # Breaking change detection
+  breaking-changes:
+    name: Breaking Change Detection
+    runs-on: ubuntu-latest
+    needs: [pre-checks, buf-lint]
+    if: needs.pre-checks.outputs.should-skip != 'true' && needs.pre-checks.outputs.has-proto-changes == 'true'
+    outputs:
+      has-breaking-changes: ${{ steps.breaking-check.outputs.has_breaking_changes }}
+      breaking-summary: ${{ steps.breaking-check.outputs.summary }}
+    steps:
+      - name: Checkpoint
+        run: echo "Checking for breaking changes..."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Buf CLI
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine comparison target
+        id: comparison-target
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "target=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
+            echo "ref=origin/${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
+          else
+            echo "target=HEAD~1" >> $GITHUB_OUTPUT
+            echo "ref=HEAD~1" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Breaking change detection
+        id: breaking-check
+        working-directory: api
+        run: |
+          mkdir -p /tmp/buf-comparison
+          
+          # Check if comparison target exists
+          if git rev-parse --verify ${{ steps.comparison-target.outputs.ref }} >/dev/null 2>&1; then
+            echo "Comparing against ${{ steps.comparison-target.outputs.target }}"
+            
+            # Export the target version
+            git archive ${{ steps.comparison-target.outputs.ref }} -- api/ | tar -x -C /tmp/buf-comparison/
+            
+            # Run breaking change detection
+            set +e
+            buf breaking --against /tmp/buf-comparison/api 2>&1 | tee breaking_changes.log
+            BREAKING_EXIT_CODE=$?
+            set -e
+            
+            if [ $BREAKING_EXIT_CODE -eq 0 ]; then
+              echo "has_breaking_changes=false" >> $GITHUB_OUTPUT
+              echo "summary=No breaking changes detected" >> $GITHUB_OUTPUT
+              echo "::notice::No breaking changes detected ✅"
+            else
+              echo "has_breaking_changes=true" >> $GITHUB_OUTPUT
+              SUMMARY=$(head -n 10 breaking_changes.log | tr '\n' ' ')
+              echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+              echo "::warning::Breaking changes detected! Review required."
+            fi
+          else
+            echo "has_breaking_changes=false" >> $GITHUB_OUTPUT
+            echo "summary=No comparison target available" >> $GITHUB_OUTPUT
+            echo "::notice::No comparison target found - first commit?"
+          fi
+
+      - name: Upload breaking changes report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: breaking-changes-report
+          path: api/breaking_changes.log
+          retention-days: 30
+
+  # Go code generation and testing
+  go-generate-test:
+    name: Go Generation & Testing
+    runs-on: ubuntu-latest
+    needs: [pre-checks, buf-lint]
+    if: needs.pre-checks.outputs.should-skip != 'true'
+    outputs:
+      go-version-matrix: ${{ steps.go-versions.outputs.matrix }}
+    steps:
+      - name: Checkpoint
+        run: echo "Generating and testing Go code..."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Setup Buf CLI
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Clean and generate Go code
+        run: |
+          rm -rf gen/go
+          mkdir -p gen/go
+          cd api && buf generate
+
+      - name: Verify generation
+        run: |
+          if [ ! -d "gen/go" ] || [ -z "$(find gen/go -name '*.go' 2>/dev/null)" ]; then
+            echo "::error::Go code generation failed - no files generated"
+            exit 1
+          fi
+          echo "✅ Go code generated successfully"
+          find gen/go -name '*.go' | head -10
+
+      - name: Go mod tidy
+        run: go mod tidy
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: Set Go version matrix
+        id: go-versions
+        run: |
+          echo 'matrix=["1.20", "1.21", "1.22"]' >> $GITHUB_OUTPUT
+
+  # Multi-version Go testing
+  go-compatibility:
+    name: Go Compatibility (${{ matrix.go-version }})
+    runs-on: ubuntu-latest
+    needs: [go-generate-test]
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        go-version: ${{ fromJson(needs.go-generate-test.outputs.go-version-matrix) }}
+    steps:
+      - name: Checkpoint
+        run: echo "Testing Go compatibility with version ${{ matrix.go-version }}..."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Setup Buf CLI
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Generate and test
+        run: |
+          rm -rf gen/go && mkdir -p gen/go
+          cd api && buf generate
+          go mod tidy
+          go test ./...
+
+  # Security scanning
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs: pre-checks
+    if: needs.pre-checks.outputs.should-skip != 'true'
+    steps:
+      - name: Checkpoint
+        run: echo "Running security scans..."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run Gosec security scanner
+        uses: securecodewarrior/github-action-gosec@master
+        with:
+          args: '-fmt sarif -out gosec.sarif ./...'
+
+      - name: Upload Gosec results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: gosec.sarif
+
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: Run Nancy (dependency vulnerability scanner)
+        run: |
+          go list -json -deps ./... | docker run --rm -i sonatypecommunity/nancy:latest sleuth
+
+  # Build and package
+  build:
+    name: Build & Package
+    runs-on: ubuntu-latest
+    needs: [pre-checks, buf-lint, breaking-changes, go-generate-test, security-scan]
+    if: needs.pre-checks.outputs.should-skip != 'true'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - name: Checkpoint
+        run: echo "Building and packaging..."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Setup Buf CLI
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # Production release
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+            VERSION=${LATEST_TAG#v}
+            IFS='.' read -ra VERSION_PARTS <<< "$VERSION"
+            PATCH=$((${VERSION_PARTS[2]:-0} + 1))
+            NEW_VERSION="${VERSION_PARTS[0]:-0}.${VERSION_PARTS[1]:-0}.$PATCH"
+            echo "version=v$NEW_VERSION" >> $GITHUB_OUTPUT
+          else
+            # Development build
+            VERSION="v0.0.0-dev.$(git rev-parse --short HEAD)"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+          echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Generate code
+        run: |
+          rm -rf gen/go && mkdir -p gen/go
+          cd api && buf generate
+
+      - name: Build Go module
+        run: |
+          go mod tidy
+          go build ./...
+
+      - name: Create distribution archive
+        run: |
+          tar -czf sentiae-protos-${{ steps.version.outputs.version }}.tar.gz \
+            gen/ api/ go.mod go.sum README.md
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentiae-protos-${{ steps.version.outputs.version }}
+          path: |
+            sentiae-protos-${{ steps.version.outputs.version }}.tar.gz
+            gen/
+          retention-days: 90
+
+  # Deploy/Release
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [pre-checks, build, breaking-changes]
+    if: |
+      needs.pre-checks.outputs.should-skip != 'true' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.breaking-changes.outputs.has-breaking-changes != 'true'
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkpoint
+        run: echo "Creating release..."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sentiae-protos-${{ needs.build.outputs.version }}
+
+      - name: Commit generated files
+        run: |
+          git add gen/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Generate proto files for ${{ needs.build.outputs.version }}"
+            git push origin main
+          fi
+
+      - name: Create and push tag
+        run: |
+          git tag -a "${{ needs.build.outputs.version }}" -m "Release ${{ needs.build.outputs.version }}"
+          git push origin "${{ needs.build.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: ncipollo/create-release@v1
+        with:
+          tag: ${{ needs.build.outputs.version }}
+          name: Release ${{ needs.build.outputs.version }}
+          body: |
+            ## Changes
+            
+            This release includes generated Go code from protocol buffer definitions.
+            
+            **Version:** ${{ needs.build.outputs.version }}
+            **Commit:** ${{ needs.build.outputs.sha }}
+            
+            ### Usage
+            
+            To use this version in your Go project:
+            
+            ```bash
+            go get github.com/sentiae/sentiae-protos@${{ needs.build.outputs.version }}
+            ```
+            
+            ### Breaking Changes
+            
+            ${{ needs.breaking-changes.outputs.breaking-summary }}
+            
+            ### Generated Files
+            
+            This release contains generated Go files from the protocol buffer definitions in the `api/proto/` directory.
+          artifacts: sentiae-protos-${{ needs.build.outputs.version }}.tar.gz
+          draft: false
+          prerelease: false
+
+  # Notification and summary
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [pre-checks, build, breaking-changes, release]
+    if: always() && needs.pre-checks.outputs.should-skip != 'true'
+    steps:
+      - name: Summary
+        run: |
+          echo "## 🚀 Sentiae Protos CI Pipeline Summary"
+          echo ""
+          echo "**Status:** ${{ job.status }}"
+          echo "**Version:** ${{ needs.build.outputs.version || 'N/A' }}"
+          echo "**Breaking Changes:** ${{ needs.breaking-changes.outputs.has-breaking-changes == 'true' && '⚠️ Yes' || '✅ No' }}"
+          echo "**Release Created:** ${{ needs.release.result == 'success' && '✅ Yes' || '❌ No' }}"
+          echo ""
+          if [ "${{ needs.breaking-changes.outputs.has-breaking-changes }}" = "true" ]; then
+            echo "⚠️ **Breaking Changes Detected:**"
+            echo "${{ needs.breaking-changes.outputs.breaking-summary }}"
+            echo ""
+            echo "Please review and increment major version if intentional."
+          fi
