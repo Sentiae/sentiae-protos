@@ -1,36 +1,34 @@
-version: v1
-build:
-  excludes:
-    - .git
-    - vendor
-breaking:
-  use:
-    # Enable comprehensive breaking change detection
-    - FILE
-    - WIRE_JSON
-  except:
-    # Allow certain changes that are backwards compatible in practice
-    - EXTENSION_NO_DELETE
-    - FIELD_NO_DELETE_UNLESS_NUMBER_RESERVED
-  ignore:
-    # Ignore breaking changes in experimental packages
-    - proto/experimental
-lint:
-  use:
-    - DEFAULT
-    - COMMENTS
-    - UNARY_RPC
-  except:
-    - PACKAGE_ENUM_NO_ALLOW_ALIAS
-    - PACKAGE_DIRECTORY_MATCH
-    - SERVICE_SUFFIX
-    - RPC_REQUEST_STANDARD_NAME
-    - RPC_RESPONSE_STANDARD_NAME
-    - COMMENT_ENUM_VALUE
-  enum_zero_value_suffix: _UNSPECIFIED
-  rpc_allow_same_request_response: false
-  rpc_allow_google_protobuf_empty_requests: true
-  rpc_allow_google_protobuf_empty_responses: true
-  service_suffix: Service
+version: v2
+modules:
+  - path: .
+    excludes:
+      - .git
+      - vendor
+    lint:
+      use:
+        - STANDARD
+      except:
+        - PACKAGE_DIRECTORY_MATCH
+        - SERVICE_SUFFIX
+        - RPC_REQUEST_STANDARD_NAME
+        - RPC_RESPONSE_STANDARD_NAME
+        - COMMENT_ENUM_VALUE
+      enum_zero_value_suffix: _UNSPECIFIED
+      rpc_allow_same_request_response: false
+      rpc_allow_google_protobuf_empty_requests: true
+      rpc_allow_google_protobuf_empty_responses: true
+      service_suffix: Service
+    breaking:
+      use:
+        # Enable comprehensive breaking change detection
+        - FILE
+        - WIRE_JSON
+      except:
+        # Allow certain changes that are backwards compatible in practice
+        - EXTENSION_NO_DELETE
+        - FIELD_NO_DELETE_UNLESS_NUMBER_RESERVED
+      ignore:
+        # Ignore breaking changes in experimental packages
+        - proto/experimental
 deps:
   - buf.build/googleapis/googleapis

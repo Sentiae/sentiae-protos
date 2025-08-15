@@ -33,18 +33,8 @@ option go_package = "github.com/Sentiae/sentiae-protos/gen/go/identity/v1";
 service IdentityService {
   // === User Management ===
   
-  // GetOrCreateUser retrieves an existing user or creates a new one.
-  //
-  // This method is primarily used by the auth-service during:
-  // - User registration flows
-  // - Just-in-time (JIT) user provisioning
-  // - SSO authentication with new users
-  //
-  // If the user doesn't exist, a new user profile is created with a default
-  // organization and team assignment.
-  //
-  // Returns the user ID and their default organizational context.
-  rpc GetOrCreateUser(GetOrCreateUserRequest) returns (GetOrCreateUserResponse);
+  // GetOrCreateUser removed - service boundary violation fixed
+  // User creation is now handled by auth-service via event publishing
   
   // GetUser retrieves complete user profile information.
   //
@@ -611,16 +601,7 @@ service IdentityService {
   rpc CleanupExpiredData(CleanupExpiredDataRequest) returns (CleanupExpiredDataResponse);
 }
 
-message GetOrCreateUserRequest {
-  string email = 1;
-  string full_name = 2;
-}
-
-message GetOrCreateUserResponse {
-  string user_id = 1;
-  string organization_id = 2; // The user's organization.
-  string default_team_id = 3; // The user's initial team.
-}
+// GetOrCreateUser messages removed - service boundary violation fixed
 
 message CheckPermissionRequest {
   string user_id = 1;

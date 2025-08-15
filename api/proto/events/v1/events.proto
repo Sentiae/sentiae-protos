@@ -1,0 +1,188 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+option go_package = "github.com/Sentiae/sentiae-protos/gen/go/events/v1";
+
+// EventType defines the category of events in the system
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_USER_CREATED = 1;
+  EVENT_TYPE_USER_UPDATED = 2;
+  EVENT_TYPE_USER_DELETED = 3;
+  EVENT_TYPE_ORGANIZATION_CREATED = 10;
+  EVENT_TYPE_ORGANIZATION_UPDATED = 11;
+  EVENT_TYPE_ORGANIZATION_DELETED = 12;
+  EVENT_TYPE_TEAM_CREATED = 20;
+  EVENT_TYPE_TEAM_UPDATED = 21;
+  EVENT_TYPE_TEAM_DELETED = 22;
+}
+
+// EventSource identifies the origin of an event
+message EventSource {
+  string service_name = 1;  // Name of the service generating the event
+  string instance_id = 2;   // Unique ID of the service instance
+  string trace_id = 3;      // Distributed tracing ID
+}
+
+// EventMetadata provides context and tracking for events
+message EventMetadata {
+  string event_id = 1;               // Unique event identifier
+  EventType event_type = 2;          // Type of event
+  EventSource source = 3;            // Event source details
+  google.protobuf.Timestamp timestamp = 4;  // When the event occurred
+  int32 version = 5;                 // Event schema version
+  map<string, string> labels = 6;    // Additional event context
+}
+
+// SagaEvent represents an event in a saga transaction
+message SagaEvent {
+  enum SagaEventType {
+    SAGA_EVENT_TYPE_UNSPECIFIED = 0;
+    SAGA_EVENT_TYPE_SAGA_STARTED = 1;
+    SAGA_EVENT_TYPE_SAGA_STEP_EXECUTED = 2;
+    SAGA_EVENT_TYPE_SAGA_COMPENSATING_ACTION = 3;
+    SAGA_EVENT_TYPE_SAGA_COMPLETED = 4;
+    SAGA_EVENT_TYPE_SAGA_FAILED = 5;
+    SAGA_EVENT_TYPE_SAGA_ROLLED_BACK = 6;
+  }
+
+  string saga_id = 1;                // Unique saga transaction ID
+  SagaEventType saga_event_type = 2; // Type of saga event
+  string step_name = 3;               // Current saga step name
+  google.protobuf.Any payload = 4;   // Step-specific payload
+  string error_message = 5;           // Error details if saga failed
+}
+
+// UserLifecycleEvent describes changes to user accounts
+message UserLifecycleEvent {
+  EventMetadata metadata = 1;
+  string user_id = 2;
+  string email = 3;
+  string organization_id = 4;
+  UserEventDetails details = 5;
+
+  message UserEventDetails {
+    enum ChangeType {
+      CHANGE_TYPE_UNSPECIFIED = 0;
+      CHANGE_TYPE_REGISTRATION = 1;
+      CHANGE_TYPE_PROFILE_UPDATE = 2;
+      CHANGE_TYPE_ROLE_CHANGE = 3;
+      CHANGE_TYPE_PASSWORD_RESET = 4;
+      CHANGE_TYPE_ACCOUNT_SUSPENSION = 5;
+      CHANGE_TYPE_ACCOUNT_REACTIVATION = 6;
+    }
+    ChangeType change_type = 1;
+    map<string, string> changes = 2;  // Specific changes made
+  }
+}
+
+// AuthenticationEvent tracks authentication-related activities
+message AuthenticationEvent {
+  EventMetadata metadata = 1;
+  string user_id = 2;
+  string organization_id = 3;
+  AuthEventType type = 4;
+  string client_ip = 5;
+  map<string, string> additional_info = 6;
+
+  enum AuthEventType {
+    AUTH_EVENT_TYPE_UNSPECIFIED = 0;
+    AUTH_EVENT_TYPE_LOGIN_ATTEMPT = 1;
+    AUTH_EVENT_TYPE_LOGIN_SUCCESS = 2;
+    AUTH_EVENT_TYPE_LOGIN_FAILURE = 3;
+    AUTH_EVENT_TYPE_LOGOUT = 4;
+    AUTH_EVENT_TYPE_MFA_CHALLENGE = 5;
+    AUTH_EVENT_TYPE_MFA_BYPASS = 6;
+    AUTH_EVENT_TYPE_SESSION_EXPIRED = 7;
+  }
+}
+
+// OrganizationEvent describes changes to organization structures
+message OrganizationEvent {
+  EventMetadata metadata = 1;
+  string organization_id = 2;
+  OrganizationEventType type = 3;
+  OrganizationEventDetails details = 4;
+
+  enum OrganizationEventType {
+    ORGANIZATION_EVENT_TYPE_UNSPECIFIED = 0;
+    ORGANIZATION_EVENT_TYPE_CREATED = 1;
+    ORGANIZATION_EVENT_TYPE_UPDATED = 2;
+    ORGANIZATION_EVENT_TYPE_DELETED = 3;
+    ORGANIZATION_EVENT_TYPE_MEMBER_ADDED = 4;
+    ORGANIZATION_EVENT_TYPE_MEMBER_REMOVED = 5;
+    ORGANIZATION_EVENT_TYPE_TEAM_ADDED = 6;
+    ORGANIZATION_EVENT_TYPE_TEAM_REMOVED = 7;
+  }
+
+  message OrganizationEventDetails {
+    map<string, string> changes = 1;
+    string affected_member_id = 2;
+    string affected_team_id = 3;
+  }
+}
+
+// SagaCompensationEvent represents an event for saga compensation
+message SagaCompensationEvent {
+  string saga_id = 1;
+  string step_id = 2;
+  CompensationType compensation_type = 3;
+  google.protobuf.Any compensation_payload = 4;
+  string error_message = 5;
+
+  enum CompensationType {
+    COMPENSATION_TYPE_UNSPECIFIED = 0;
+    COMPENSATION_TYPE_ROLLBACK = 1;
+    COMPENSATION_TYPE_RETRY = 2;
+    COMPENSATION_TYPE_MANUAL_INTERVENTION = 3;
+    COMPENSATION_TYPE_SKIP = 4;
+  }
+}
+
+// ErrorEvent provides detailed error tracking
+message ErrorEvent {
+  EventMetadata metadata = 1;
+  string error_code = 2;
+  string error_message = 3;
+  ErrorSeverity severity = 4;
+  map<string, string> context = 5;
+
+  enum ErrorSeverity {
+    ERROR_SEVERITY_UNSPECIFIED = 0;
+    ERROR_SEVERITY_INFO = 1;
+    ERROR_SEVERITY_WARNING = 2;
+    ERROR_SEVERITY_ERROR = 3;
+    ERROR_SEVERITY_CRITICAL = 4;
+  }
+}
+
+// CircuitBreakerEvent tracks circuit breaker state changes
+message CircuitBreakerEvent {
+  enum CircuitState {
+    CIRCUIT_STATE_UNSPECIFIED = 0; // Unspecified state
+    CIRCUIT_STATE_CLOSED = 1;      // Normal operation
+    CIRCUIT_STATE_OPEN = 2;        // Failing fast
+    CIRCUIT_STATE_HALF_OPEN = 3;   // Testing recovery
+  }
+
+  string service_name = 1;
+  CircuitState current_state = 2;
+  int32 failure_count = 3;
+  google.protobuf.Timestamp last_failure_time = 4;
+  string last_error_message = 5;
+}
+
+// AuditLogEvent captures detailed audit log entries
+message AuditLogEvent {
+  EventMetadata metadata = 1;
+  string actor_id = 2;
+  string actor_type = 3;  // "user", "service", "system"
+  string action = 4;      // "create", "update", "delete", etc.
+  string resource_type = 5;
+  string resource_id = 6;
+  map<string, string> changes = 7;
+}

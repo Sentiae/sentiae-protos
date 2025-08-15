@@ -1,0 +1,335 @@
+syntax = "proto3";
+
+package saga.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/sentiae/sentiae-protos/gen/go/proto/saga/v1;sagav1";
+
+// Saga orchestration service for managing distributed transactions
+service SagaOrchestrationService {
+  // Start a new saga
+  rpc StartSaga(StartSagaRequest) returns (StartSagaResponse);
+  
+  // Execute next step in saga
+  rpc ExecuteStep(ExecuteStepRequest) returns (ExecuteStepResponse);
+  
+  // Complete a step
+  rpc CompleteStep(CompleteStepRequest) returns (CompleteStepResponse);
+  
+  // Mark a step as failed
+  rpc FailStep(FailStepRequest) returns (FailStepResponse);
+  
+  // Start compensation for a saga
+  rpc CompensateSaga(CompensateSagaRequest) returns (CompensateSagaResponse);
+  
+  // Get saga status
+  rpc GetSagaStatus(GetSagaStatusRequest) returns (GetSagaStatusResponse);
+  
+  // List sagas with filters
+  rpc ListSagas(ListSagasRequest) returns (ListSagasResponse);
+  
+  // Recover failed/stuck sagas
+  rpc RecoverSagas(RecoverSagasRequest) returns (RecoverSagasResponse);
+}
+
+// Saga step execution service (implemented by each service)
+service SagaStepService {
+  // Execute a saga step
+  rpc ExecuteStep(SagaStepExecuteRequest) returns (SagaStepExecuteResponse);
+  
+  // Compensate a saga step
+  rpc CompensateStep(SagaStepCompensateRequest) returns (SagaStepCompensateResponse);
+  
+  // Check if step can be retried
+  rpc CanRetryStep(CanRetryStepRequest) returns (CanRetryStepResponse);
+}
+
+// Saga status enum
+enum SagaStatus {
+  SAGA_STATUS_UNSPECIFIED = 0;
+  SAGA_STATUS_PENDING = 1;
+  SAGA_STATUS_RUNNING = 2;
+  SAGA_STATUS_COMPLETED = 3;
+  SAGA_STATUS_FAILED = 4;
+  SAGA_STATUS_COMPENSATING = 5;
+  SAGA_STATUS_COMPENSATED = 6;
+  SAGA_STATUS_COMPENSATION_FAILED = 7;
+}
+
+// Step status enum
+enum SagaStepStatus {
+  SAGA_STEP_STATUS_UNSPECIFIED = 0;
+  SAGA_STEP_STATUS_PENDING = 1;
+  SAGA_STEP_STATUS_RUNNING = 2;
+  SAGA_STEP_STATUS_COMPLETED = 3;
+  SAGA_STEP_STATUS_FAILED = 4;
+  SAGA_STEP_STATUS_COMPENSATING = 5;
+  SAGA_STEP_STATUS_COMPENSATED = 6;
+  SAGA_STEP_STATUS_COMPENSATION_FAILED = 7;
+  SAGA_STEP_STATUS_SKIPPED = 8;
+}
+
+// Saga step execution mode
+enum SagaStepExecutionMode {
+  SAGA_STEP_EXECUTION_MODE_UNSPECIFIED = 0;
+  SAGA_STEP_EXECUTION_MODE_SYNCHRONOUS = 1;
+  SAGA_STEP_EXECUTION_MODE_ASYNCHRONOUS = 2;
+}
+
+// Saga definition
+message SagaDefinition {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated SagaStepDefinition steps = 4;
+  SagaConfig config = 5;
+  map<string, string> metadata = 6;
+  google.protobuf.Timestamp created_at = 7;
+  string created_by = 8;
+}
+
+// Saga step definition
+message SagaStepDefinition {
+  string id = 1;
+  string name = 2;
+  string service = 3;
+  string action = 4;
+  string compensation_action = 5;
+  SagaStepExecutionMode execution_mode = 6;
+  google.protobuf.Struct input_schema = 7;
+  google.protobuf.Struct output_schema = 8;
+  SagaStepConfig config = 9;
+  repeated string dependencies = 10; // Step IDs that must complete before this step
+  map<string, string> metadata = 11;
+}
+
+// Saga configuration
+message SagaConfig {
+  int32 timeout_seconds = 1;
+  int32 max_retries = 2;
+  int32 retry_delay_seconds = 3;
+  bool parallel_execution = 4;
+  bool auto_compensate_on_failure = 5;
+  string compensation_strategy = 6; // "reverse_order", "parallel", "custom"
+  map<string, string> metadata = 7;
+}
+
+// Saga step configuration
+message SagaStepConfig {
+  int32 timeout_seconds = 1;
+  int32 max_retries = 2;
+  int32 retry_delay_seconds = 3;
+  bool is_compensable = 4;
+  bool is_critical = 5; // If true, saga fails if this step fails
+  map<string, string> metadata = 6;
+}
+
+// Saga instance
+message SagaInstance {
+  string id = 1;
+  string definition_id = 2;
+  SagaStatus status = 3;
+  google.protobuf.Struct input = 4;
+  google.protobuf.Struct output = 5;
+  repeated SagaStepInstance steps = 6;
+  string correlation_id = 7;
+  string initiated_by = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp started_at = 10;
+  google.protobuf.Timestamp completed_at = 11;
+  string error_message = 12;
+  map<string, string> metadata = 13;
+}
+
+// Saga step instance
+message SagaStepInstance {
+  string id = 1;
+  string step_definition_id = 2;
+  SagaStepStatus status = 3;
+  google.protobuf.Struct input = 4;
+  google.protobuf.Struct output = 5;
+  string service_endpoint = 6;
+  int32 attempt_count = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp completed_at = 10;
+  string error_message = 11;
+  map<string, string> metadata = 12;
+}
+
+// Start saga request
+message StartSagaRequest {
+  string definition_id = 1;
+  google.protobuf.Struct input = 2;
+  string correlation_id = 3;
+  string initiated_by = 4;
+  map<string, string> metadata = 5;
+}
+
+message StartSagaResponse {
+  SagaInstance saga = 1;
+}
+
+// Execute step request
+message ExecuteStepRequest {
+  string saga_id = 1;
+  string step_id = 2;
+}
+
+message ExecuteStepResponse {
+  SagaStepInstance step = 1;
+}
+
+// Complete step request
+message CompleteStepRequest {
+  string saga_id = 1;
+  string step_id = 2;
+  google.protobuf.Struct output = 3;
+}
+
+message CompleteStepResponse {
+  SagaStepInstance step = 1;
+}
+
+// Fail step request
+message FailStepRequest {
+  string saga_id = 1;
+  string step_id = 2;
+  string error_message = 3;
+  bool should_retry = 4;
+}
+
+message FailStepResponse {
+  SagaStepInstance step = 1;
+}
+
+// Compensate saga request
+message CompensateSagaRequest {
+  string saga_id = 1;
+  string reason = 2;
+}
+
+message CompensateSagaResponse {
+  SagaInstance saga = 1;
+}
+
+// Get saga status request
+message GetSagaStatusRequest {
+  string saga_id = 1;
+}
+
+message GetSagaStatusResponse {
+  SagaInstance saga = 1;
+}
+
+// List sagas request
+message ListSagasRequest {
+  string definition_id = 1;
+  SagaStatus status = 2;
+  string correlation_id = 3;
+  string initiated_by = 4;
+  google.protobuf.Timestamp created_after = 5;
+  google.protobuf.Timestamp created_before = 6;
+  int32 page_size = 7;
+  string page_token = 8;
+}
+
+message ListSagasResponse {
+  repeated SagaInstance sagas = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Recover sagas request
+message RecoverSagasRequest {
+  repeated string saga_ids = 1;
+  bool auto_retry_failed_steps = 2;
+}
+
+message RecoverSagasResponse {
+  repeated SagaInstance sagas = 1;
+}
+
+// Saga step execution request (for individual services)
+message SagaStepExecuteRequest {
+  string saga_id = 1;
+  string step_id = 2;
+  string step_definition_id = 3;
+  google.protobuf.Struct input = 4;
+  string correlation_id = 5;
+  map<string, string> metadata = 6;
+}
+
+message SagaStepExecuteResponse {
+  google.protobuf.Struct output = 1;
+  string error_message = 2;
+  bool should_retry = 3;
+}
+
+// Saga step compensation request
+message SagaStepCompensateRequest {
+  string saga_id = 1;
+  string step_id = 2;
+  string step_definition_id = 3;
+  google.protobuf.Struct original_input = 4;
+  google.protobuf.Struct step_output = 5;
+  string correlation_id = 6;
+  map<string, string> metadata = 7;
+}
+
+message SagaStepCompensateResponse {
+  string error_message = 1;
+  bool compensation_successful = 2;
+}
+
+// Can retry step request
+message CanRetryStepRequest {
+  string saga_id = 1;
+  string step_id = 2;
+  string step_definition_id = 3;
+  int32 current_attempt = 4;
+  string last_error = 5;
+}
+
+message CanRetryStepResponse {
+  bool can_retry = 1;
+  int32 retry_delay_seconds = 2;
+  string reason = 3;
+}
+
+// Saga events for pub/sub
+message SagaEvent {
+  string event_id = 1;
+  string saga_id = 2;
+  string event_type = 3; // "saga.started", "saga.completed", "saga.failed", "step.completed", etc.
+  google.protobuf.Struct payload = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  string correlation_id = 6;
+  map<string, string> metadata = 7;
+}
+
+// Saga metrics
+message SagaMetrics {
+  string definition_id = 1;
+  int64 total_executions = 2;
+  int64 successful_executions = 3;
+  int64 failed_executions = 4;
+  int64 compensated_executions = 5;
+  double average_duration_seconds = 6;
+  double success_rate = 7;
+  google.protobuf.Timestamp last_execution = 8;
+}
+
+// Step metrics
+message SagaStepMetrics {
+  string step_definition_id = 1;
+  int64 total_executions = 2;
+  int64 successful_executions = 3;
+  int64 failed_executions = 4;
+  int64 compensated_executions = 5;
+  double average_duration_seconds = 6;
+  double success_rate = 7;
+  int32 average_retry_count = 8;
+}
