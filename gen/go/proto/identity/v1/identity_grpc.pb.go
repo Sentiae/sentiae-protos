@@ -19,7 +19,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	IdentityService_GetOrCreateUser_FullMethodName                 = "/identity.v1.IdentityService/GetOrCreateUser"
 	IdentityService_GetUser_FullMethodName                         = "/identity.v1.IdentityService/GetUser"
 	IdentityService_UpdateUser_FullMethodName                      = "/identity.v1.IdentityService/UpdateUser"
 	IdentityService_CheckPermission_FullMethodName                 = "/identity.v1.IdentityService/CheckPermission"
@@ -100,18 +99,6 @@ const (
 //	  CreatedByUserId: userID,
 //	})
 type IdentityServiceClient interface {
-	// GetOrCreateUser retrieves an existing user or creates a new one.
-	//
-	// This method is primarily used by the auth-service during:
-	// - User registration flows
-	// - Just-in-time (JIT) user provisioning
-	// - SSO authentication with new users
-	//
-	// If the user doesn't exist, a new user profile is created with a default
-	// organization and team assignment.
-	//
-	// Returns the user ID and their default organizational context.
-	GetOrCreateUser(ctx context.Context, in *GetOrCreateUserRequest, opts ...grpc.CallOption) (*GetOrCreateUserResponse, error)
 	// GetUser retrieves complete user profile information.
 	//
 	// The response includes the user's basic profile plus their organizational
@@ -620,16 +607,6 @@ func NewIdentityServiceClient(cc grpc.ClientConnInterface) IdentityServiceClient
 	return &identityServiceClient{cc}
 }
 
-func (c *identityServiceClient) GetOrCreateUser(ctx context.Context, in *GetOrCreateUserRequest, opts ...grpc.CallOption) (*GetOrCreateUserResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetOrCreateUserResponse)
-	err := c.cc.Invoke(ctx, IdentityService_GetOrCreateUser_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *identityServiceClient) GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetUserResponse)
@@ -1122,18 +1099,6 @@ func (c *identityServiceClient) CleanupExpiredData(ctx context.Context, in *Clea
 //	  CreatedByUserId: userID,
 //	})
 type IdentityServiceServer interface {
-	// GetOrCreateUser retrieves an existing user or creates a new one.
-	//
-	// This method is primarily used by the auth-service during:
-	// - User registration flows
-	// - Just-in-time (JIT) user provisioning
-	// - SSO authentication with new users
-	//
-	// If the user doesn't exist, a new user profile is created with a default
-	// organization and team assignment.
-	//
-	// Returns the user ID and their default organizational context.
-	GetOrCreateUser(context.Context, *GetOrCreateUserRequest) (*GetOrCreateUserResponse, error)
 	// GetUser retrieves complete user profile information.
 	//
 	// The response includes the user's basic profile plus their organizational
@@ -1642,9 +1607,6 @@ type IdentityServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedIdentityServiceServer struct{}
 
-func (UnimplementedIdentityServiceServer) GetOrCreateUser(context.Context, *GetOrCreateUserRequest) (*GetOrCreateUserResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetOrCreateUser not implemented")
-}
 func (UnimplementedIdentityServiceServer) GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetUser not implemented")
 }
@@ -1802,24 +1764,6 @@ func RegisterIdentityServiceServer(s grpc.ServiceRegistrar, srv IdentityServiceS
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&IdentityService_ServiceDesc, srv)
-}
-
-func _IdentityService_GetOrCreateUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetOrCreateUserRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(IdentityServiceServer).GetOrCreateUser(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: IdentityService_GetOrCreateUser_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(IdentityServiceServer).GetOrCreateUser(ctx, req.(*GetOrCreateUserRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _IdentityService_GetUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -2657,10 +2601,6 @@ var IdentityService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "identity.v1.IdentityService",
 	HandlerType: (*IdentityServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetOrCreateUser",
-			Handler:    _IdentityService_GetOrCreateUser_Handler,
-		},
 		{
 			MethodName: "GetUser",
 			Handler:    _IdentityService_GetUser_Handler,

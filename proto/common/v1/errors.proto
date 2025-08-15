@@ -1,0 +1,165 @@
+syntax = "proto3";
+
+package common.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+option go_package = "github.com/Sentiae/sentiae-protos/gen/go/proto/common/v1";
+
+// ErrorCode defines standardized error codes across services
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  
+  // Client Errors (4xx)
+  ERROR_CODE_INVALID_ARGUMENT = 1000;     // 400 Bad Request
+  ERROR_CODE_VALIDATION_FAILED = 1001;    // 400 Bad Request - Validation
+  ERROR_CODE_UNAUTHORIZED = 1010;         // 401 Unauthorized
+  ERROR_CODE_FORBIDDEN = 1020;            // 403 Forbidden
+  ERROR_CODE_NOT_FOUND = 1030;           // 404 Not Found
+  ERROR_CODE_CONFLICT = 1040;            // 409 Conflict
+  ERROR_CODE_GONE = 1050;                // 410 Gone / Expired
+  ERROR_CODE_RATE_LIMITED = 1060;        // 429 Too Many Requests
+  
+  // Server Errors (5xx)
+  ERROR_CODE_INTERNAL = 2000;            // 500 Internal Server Error
+  ERROR_CODE_NOT_IMPLEMENTED = 2010;     // 501 Not Implemented
+  ERROR_CODE_BAD_GATEWAY = 2020;         // 502 Bad Gateway - External Service
+  ERROR_CODE_SERVICE_UNAVAILABLE = 2030; // 503 Service Unavailable
+  ERROR_CODE_TIMEOUT = 2040;             // 504 Gateway Timeout
+  
+  // Business Logic Errors (6xx)
+  ERROR_CODE_BUSINESS_RULE_VIOLATION = 3000;
+  ERROR_CODE_INSUFFICIENT_PERMISSIONS = 3010;
+  ERROR_CODE_QUOTA_EXCEEDED = 3020;
+  ERROR_CODE_WORKFLOW_ERROR = 3030;
+  
+  // Authentication/Authorization Errors (7xx)
+  ERROR_CODE_INVALID_CREDENTIALS = 4000;
+  ERROR_CODE_TOKEN_EXPIRED = 4010;
+  ERROR_CODE_TOKEN_INVALID = 4020;
+  ERROR_CODE_MFA_REQUIRED = 4030;
+  ERROR_CODE_ACCOUNT_LOCKED = 4040;
+  ERROR_CODE_SESSION_EXPIRED = 4050;
+}
+
+// ErrorCategory groups related error codes
+enum ErrorCategory {
+  ERROR_CATEGORY_UNSPECIFIED = 0;
+  ERROR_CATEGORY_VALIDATION = 1;      // Input validation errors
+  ERROR_CATEGORY_AUTHENTICATION = 2;  // Auth related errors
+  ERROR_CATEGORY_AUTHORIZATION = 3;   // Permission related errors
+  ERROR_CATEGORY_RESOURCE = 4;        // Resource not found, conflict, etc.
+  ERROR_CATEGORY_EXTERNAL_SERVICE = 5;// External service errors
+  ERROR_CATEGORY_INTERNAL = 6;        // Internal system errors
+  ERROR_CATEGORY_RATE_LIMITING = 7;   // Rate limiting errors
+  ERROR_CATEGORY_BUSINESS_LOGIC = 8;  // Business rule violations
+}
+
+// RetryInfo provides information about when to retry a failed operation
+message RetryInfo {
+  // How long to wait before retrying
+  google.protobuf.Timestamp retry_after = 1;
+  
+  // Maximum number of retries recommended
+  int32 max_retries = 2;
+  
+  // Whether this error is retryable
+  bool is_retryable = 3;
+  
+  // Backoff strategy to use
+  BackoffStrategy backoff_strategy = 4;
+}
+
+enum BackoffStrategy {
+  BACKOFF_STRATEGY_UNSPECIFIED = 0;
+  BACKOFF_STRATEGY_FIXED = 1;
+  BACKOFF_STRATEGY_LINEAR = 2;
+  BACKOFF_STRATEGY_EXPONENTIAL = 3;
+  BACKOFF_STRATEGY_FIBONACCI = 4;
+}
+
+// ValidationError provides detailed field-level validation errors
+message ValidationError {
+  // Field that failed validation
+  string field = 1;
+  
+  // Human-readable error message
+  string message = 2;
+  
+  // Value that was invalid
+  string rejected_value = 3;
+  
+  // Validation rule that was violated
+  string rule = 4;
+  
+  // Additional context about the error
+  map<string, string> context = 5;
+}
+
+// ServiceError represents a standardized error across all services
+message ServiceError {
+  // Unique error identifier for this occurrence
+  string error_id = 1;
+  
+  // Correlation ID to trace request across services
+  string correlation_id = 2;
+  
+  // Standardized error code
+  ErrorCode code = 3;
+  
+  // Error category for grouping
+  ErrorCategory category = 4;
+  
+  // Human-readable error message
+  string message = 5;
+  
+  // Service that generated the error
+  string service = 6;
+  
+  // Operation that failed
+  string operation = 7;
+  
+  // Timestamp when error occurred
+  google.protobuf.Timestamp timestamp = 8;
+  
+  // Detailed field validation errors (for validation failures)
+  repeated ValidationError validation_errors = 9;
+  
+  // Retry information (if applicable)
+  RetryInfo retry_info = 10;
+  
+  // Additional error context and metadata
+  map<string, string> context = 11;
+  
+  // Stack trace (only included in development/debug mode)
+  string stack_trace = 12;
+  
+  // Nested/caused-by error
+  ServiceError caused_by = 13;
+  
+  // Custom error details specific to the service
+  google.protobuf.Any details = 14;
+}
+
+// CircuitBreakerError provides information about circuit breaker state
+message CircuitBreakerError {
+  // Current state of the circuit breaker
+  CircuitBreakerState state = 1;
+  
+  // Number of consecutive failures
+  int32 failure_count = 2;
+  
+  // When the circuit will transition to half-open
+  google.protobuf.Timestamp next_attempt = 3;
+  
+  // Success threshold to close circuit
+  int32 success_threshold = 4;
+}
+
+enum CircuitBreakerState {
+  CIRCUIT_BREAKER_STATE_UNSPECIFIED = 0;
+  CIRCUIT_BREAKER_STATE_CLOSED = 1;
+  CIRCUIT_BREAKER_STATE_OPEN = 2;
+  CIRCUIT_BREAKER_STATE_HALF_OPEN = 3;
+}
